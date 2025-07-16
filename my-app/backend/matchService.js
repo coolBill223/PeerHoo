@@ -43,7 +43,7 @@ export const sendMatchRequest = async ({
 export const getMyMatchRequests = async (uid) => {
   const q = query(
     collection(db, 'matchRequests'),
-    where('senderId', '==', uid)     // ← 关键条件
+    where('senderId', '==', uid)     
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
