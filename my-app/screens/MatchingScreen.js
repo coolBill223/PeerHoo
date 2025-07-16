@@ -16,17 +16,28 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getCourseSections } from '../backend/courseService';
-import { sendMatchRequest, getIncomingMatchRequests } from '../backend/matchService';
+import { sendMatchRequest, getIncomingMatchRequests, getMyMatchRequests, getOpenMatchRequests, applyToMatchRequest } from '../backend/matchService';
 import { auth } from '../firebaseConfig';
 
 const MatchingScreen = ({ navigation }) => {
-  const uid = auth.currentUser?.uid ?? 'test-uid';
+  const [uid, setUid] = useState(null);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user) {
+      setUid(user.uid);
+      loadMyCourses(user.uid);
+    }
+  }, []);
+
+
 
   const [myCourses, setMyCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState('');
   const [incoming, setIncoming] = useState([]);
   const [loadingIncoming, setLoadingIncoming] = useState(false);
-  
+  const [open, setOpen] = useState([]);
+  const [loadingOpen, setLoadingOpen] = useState(false);
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -55,9 +66,50 @@ const MatchingScreen = ({ navigation }) => {
     }
   };
 
-  useEffect(() => {
+    const loadMyCourses = async (uid) => {
+    try {
+      const all = await getMyMatchRequests(uid);
+      const userCourses = all
+        .filter((m) => m.senderId === uid)
+        .map((m) => m.course);
+      setMyCourses([...new Set(userCourses)]);
+    } catch (err) {
+      console.error('Failed to load my courses:', err);
+    }
+  };
+
+  const handleApply = async (reqId) => {
+  try {
+    await applyToMatchRequest(reqId, uid);
+    Alert.alert('Applied', 'Your request has been sent.');
     loadIncoming();
-  }, []);
+    const data = await getOpenMatchRequests(selectedCourse, uid);
+    setOpen(data);
+  } catch (e) {
+    Alert.alert('Error', e.message);
+  }
+};
+
+
+  useEffect(() => {
+    const loadOpen = async () => {
+      if (!selectedCourse || !uid) return;
+      try {
+        setLoadingOpen(true);
+        const data = await getOpenMatchRequests(selectedCourse, uid);
+        setOpen(data);
+      } finally {
+        setLoadingOpen(false);
+      }
+    };
+    loadOpen();
+  }, [selectedCourse, uid]); 
+
+  useEffect(() => {
+    if (uid) {
+      loadIncoming();
+    }
+  }, [uid]);
 
   //course submit
   const handleSubmit = async () => {
@@ -74,9 +126,7 @@ const MatchingScreen = ({ navigation }) => {
         bio: form.goals.slice(0, 100),
       });
       Alert.alert('Success', 'Match request submitted.');
-      setMyCourses((prev) =>
-        prev.includes(form.courseCode) ? prev : [...prev, form.courseCode]
-      );
+      await loadMyCourses(uid);
       setSelectedCourse(form.courseCode);
       setShowForm(false);
       setForm({
@@ -298,11 +348,40 @@ const MatchingScreen = ({ navigation }) => {
               </View>
             </View>
           ))}
-        {incoming.length === 0 && !loadingIncoming && (
-          <Text style={{ color: '#666', marginTop: 8 }}>
-            No requests yet.
-          </Text>
-        )}
+              {incoming.length === 0 && !loadingIncoming && (
+                  <Text style={{ color:'#666', marginTop:8 }}>No requests yet.</Text>
+                )}
+
+                {selectedCourse !== '' && (
+                  <>
+                    <Text style={[styles.label, { marginTop: 30 }]}>Open Requests</Text>
+                    {loadingOpen && <ActivityIndicator />}
+                    {open.length === 0 && !loadingOpen && (
+                      <Text style={{ color:'#666', marginTop:8 }}>
+                        No open requests for this course.
+                      </Text>
+                    )}
+
+                    {open.map((m) => (
+                      <View key={m.id} style={styles.matchCard}>
+                        <Ionicons name="person-circle-outline" size={36} color="#999" />
+                        <View style={{ marginLeft: 10, flex: 1 }}>
+                          <Text style={{ fontWeight:'600' }}>{m.course}</Text>
+                          <Text style={{ fontSize:12, color:'#666' }}>
+                            {m.studyTime} · {m.meetingPreference}
+                          </Text>
+                          <Text style={{ fontSize:12, color:'#888' }}>{m.bio}</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.applyBtn}
+                          onPress={() => handleApply(m.id)}
+                        >
+                          <Text style={styles.applyTxt}>Apply</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </>
+                )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -408,6 +487,15 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
   submitTxt: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  applyBtn: {
+    backgroundColor: '#34C759',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignSelf: 'center',
+  },
+  applyTxt: { color: '#fff', fontWeight: '600', fontSize: 12 },
+
 });
 
 export default MatchingScreen;

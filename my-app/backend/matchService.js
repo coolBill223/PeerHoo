@@ -39,22 +39,14 @@ export const sendMatchRequest = async ({
  * @param {string} senderId
  * @param {string|null} course
  */
-export const getMyMatchRequests = async (senderId, course = null) => {
-  let q = query(
+
+export const getMyMatchRequests = async (uid) => {
+  const q = query(
     collection(db, 'matchRequests'),
-    where('senderId', '==', senderId)
+    where('senderId', '==', uid)     // ← 关键条件
   );
-
-  if (course) {
-    q = query(
-      collection(db, 'matchRequests'),
-      where('senderId', '==', senderId),
-      where('course', '==', course)
-    );
-  }
-
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 };
 
 /**
@@ -80,4 +72,34 @@ export const getIncomingMatchRequests = async (userId) => {
 export const updateMatchRequestStatus = async (requestId, status) => {
   const ref = doc(db, 'matchRequests', requestId);
   await updateDoc(ref, { status });
+};
+
+/**
+ * public request, same class, no one accept, status pending, not from me
+ * @param {string} courseCode
+ * @param {string} uid  
+ */
+export const getOpenMatchRequests = async (courseCode, uid) => {
+  const q = query(
+    collection(db, 'matchRequests'),
+    where('course', '==', courseCode),
+    where('status', '==', 'pending'),
+    where('receiverId', '==', null)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+           .map((d) => ({ id: d.id, ...d.data() }))
+           .filter((m) => m.senderId !== uid);
+};
+
+/**
+ * applied
+ * @param {string} reqId
+ * @param {string} uid
+ */
+export const applyToMatchRequest = async (reqId, uid) => {
+  await updateDoc(doc(db, 'matchRequests', reqId), {
+    receiverId: uid,
+    status: 'applied',
+  });
 };
