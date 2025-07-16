@@ -18,7 +18,7 @@ const WelcomeScreen = ({ navigation }) => {
         {/* Hero Section */}
         <View style={styles.heroSection}>
           <View style={styles.iconContainer}>
-            <Ionicons name="school" size={80} color="#007AFF" />
+            <Ionicons name="school" size={60} color="#007AFF" />
           </View>
           <Text style={styles.title}>StudyMate</Text>
           <Text style={styles.subtitle}>Connect • Study • Succeed</Text>
@@ -27,18 +27,18 @@ const WelcomeScreen = ({ navigation }) => {
           </Text>
         </View>
 
-        {/* Features Preview */}
+        {/* Simple Features List */}
         <View style={styles.featuresSection}>
           <View style={styles.featureItem}>
-            <Ionicons name="people" size={24} color="#007AFF" />
+            <Ionicons name="people" size={20} color="#007AFF" />
             <Text style={styles.featureText}>Match with study partners</Text>
           </View>
           <View style={styles.featureItem}>
-            <Ionicons name="document-text" size={24} color="#34C759" />
+            <Ionicons name="document-text" size={20} color="#007AFF" />
             <Text style={styles.featureText}>Share course materials</Text>
           </View>
           <View style={styles.featureItem}>
-            <Ionicons name="chatbubble" size={24} color="#FF9500" />
+            <Ionicons name="chatbubble" size={20} color="#007AFF" />
             <Text style={styles.featureText}>Real-time collaboration</Text>
           </View>
         </View>
@@ -60,10 +60,8 @@ const WelcomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Join thousands of students already studying together</Text>
-        </View>
+        {/* Simple Footer */}
+        <Text style={styles.footerText}>Join thousands of students already studying together</Text>
       </View>
     </SafeAreaView>
   );
@@ -77,69 +75,59 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 30,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   heroSection: {
     alignItems: 'center',
-    marginTop: height * 0.1,
+    marginBottom: 50,
   },
   iconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#f0f8ff',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 30,
-    shadowColor: '#007AFF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    marginBottom: 25,
   },
   title: {
-    fontSize: 42,
+    fontSize: 36,
     fontWeight: 'bold',
     color: '#007AFF',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: '#666',
-    marginBottom: 20,
+    marginBottom: 15,
     textAlign: 'center',
   },
   description: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#666',
     textAlign: 'center',
-    lineHeight: 24,
-    paddingHorizontal: 20,
+    lineHeight: 22,
+    paddingHorizontal: 10,
   },
   featuresSection: {
-    marginTop: 40,
+    marginBottom: 40,
+    alignItems: 'flex-start',
   },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: 12,
   },
   featureText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#333',
-    marginLeft: 15,
-    fontWeight: '500',
+    marginLeft: 12,
+    fontWeight: '400',
   },
   buttonSection: {
-    marginBottom: 40,
+    width: '100%',
+    marginBottom: 30,
   },
   loginButton: {
     backgroundColor: '#007AFF',
@@ -171,12 +159,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  footer: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
   footerText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#999',
     textAlign: 'center',
   },
