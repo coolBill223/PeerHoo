@@ -16,7 +16,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getCourseSections } from '../backend/courseService';
-import { sendMatchRequest, getIncomingMatchRequests, getMyMatchRequests, getOpenMatchRequests, applyToMatchRequest } from '../backend/matchService';
+import { sendMatchRequest, getIncomingMatchRequests, getMyMatchRequests, getOpenMatchRequests, applyToMatchRequest,
+  acceptMatchRequest, rejectMatchRequest } from '../backend/matchService';
 import { auth } from '../firebaseConfig';
 
 const MatchingScreen = ({ navigation }) => {
@@ -362,40 +363,61 @@ const MatchingScreen = ({ navigation }) => {
         </View>
 
         {/* Incoming requests section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Incoming Requests</Text>
-          {loadingIncoming ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#007AFF" />
-              <Text style={styles.loadingText}>Loading requests...</Text>
-            </View>
-          ) : incoming.filter((m) => m.course === selectedCourse || selectedCourse === '').length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="mail-outline" size={48} color="#ccc" />
-              <Text style={styles.emptyStateText}>No incoming requests</Text>
-              <Text style={styles.emptyStateSubtext}>
-                {selectedCourse ? `No requests for ${selectedCourse}` : 'Select a course to see requests'}
-              </Text>
-            </View>
-          ) : (
-            incoming
-              .filter((m) => m.course === selectedCourse || selectedCourse === '')
-              .map((m) => (
+         <Text style={[styles.label, { marginTop: 30 }]}>Incoming Requests</Text>
+          {loadingIncoming && <ActivityIndicator />}
+          {incoming
+            .filter((m) => m.course === selectedCourse || selectedCourse === '')
+            .map((m) => {
+              const iAmSender = m.senderId === uid;
+              const iAmReceiver = m.receiverId === uid;
+              return (
                 <View key={m.id} style={styles.matchCard}>
-                  <View style={styles.avatarContainer}>
-                    <Ionicons name="person" size={24} color="#007AFF" />
-                  </View>
-                  <View style={styles.matchInfo}>
-                    <Text style={styles.matchCourse}>{m.course}</Text>
-                    <Text style={styles.matchDetails}>
+                  <Ionicons name="person-circle" size={38} color="#007AFF" />
+                  <View style={{ marginLeft: 10, flex: 1 }}>
+                    <Text style={{ fontWeight: '600' }}>{m.course}</Text>
+                    <Text style={{ fontSize: 12, color: '#666' }}>
                       {m.studyTime} · {m.meetingPreference}
                     </Text>
-                    <Text style={styles.matchBio}>{m.bio}</Text>
+                    <Text style={{ fontSize: 12, color: '#888' }}>{m.bio}</Text>
                   </View>
+
+                  {/* action area */}
+                  {iAmSender && (
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <TouchableOpacity
+                        style={styles.acceptBtn}
+                        onPress={async () => {
+                          await acceptMatchRequest(m);
+                          loadIncoming();
+                          setOpen(await getOpenMatchRequests(selectedCourse, uid));
+                        }}
+                      >
+                        <Text style={styles.btnTxt}>Accept</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.rejectBtn}
+                        onPress={async () => {
+                          await rejectMatchRequest(m.id);
+                          loadIncoming();
+                          setOpen(await getOpenMatchRequests(selectedCourse, uid));
+                        }}
+                      >
+                        <Text style={styles.btnTxt}>Reject</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {iAmReceiver && (
+                    <Text style={{ fontSize: 12, color: '#888' }}>
+                      Waiting for sender…
+                    </Text>
+                  )}
                 </View>
-              ))
+              );
+            })}
+          {incoming.length === 0 && !loadingIncoming && (
+            <Text style={{ color: '#666', marginTop: 8 }}>No requests yet.</Text>
           )}
-        </View>
 
         {/* Open requests section */}
         {selectedCourse !== '' && (

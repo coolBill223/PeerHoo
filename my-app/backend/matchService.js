@@ -7,6 +7,7 @@ import {
   where,
   updateDoc,
   doc,
+  or,
   serverTimestamp,
 } from 'firebase/firestore';
 
@@ -53,15 +54,26 @@ export const getMyMatchRequests = async (uid) => {
  * the pending match
  * @param {string} userId
  */
-export const getIncomingMatchRequests = async (userId) => {
-  const q = query(
+export const getIncomingMatchRequests = async (uid) => {
+  
+  const recvQ = query(
     collection(db, 'matchRequests'),
-    where('receiverId', '==', userId),
+    where('receiverId', '==', uid),
     where('status', '==', 'pending')
   );
+  
+  const sendQ = query(
+    collection(db, 'matchRequests'),
+    where('senderId', '==', uid),
+    where('status', '==', 'pending')
+  );
+  const [recvSnap, sendSnap] = await Promise.all([getDocs(recvQ), getDocs(sendQ)]);
 
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const recv = recvSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const send = sendSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(m => m.receiverId);             
+  return [...recv, ...send];
 };
 
 /**
@@ -100,6 +112,68 @@ export const getOpenMatchRequests = async (courseCode, uid) => {
 export const applyToMatchRequest = async (reqId, uid) => {
   await updateDoc(doc(db, 'matchRequests', reqId), {
     receiverId: uid,
-    status: 'applied',
   });
+};
+
+export const acceptMatchRequest = async (req) => {
+  const { senderId, receiverId, course, id: clickedId } = req;
+
+  // helper – returns the opposite uid for a given row
+  const counterpart = (row) =>
+    row.senderId === senderId ? receiverId : senderId;
+
+  const q = query(
+    collection(db, 'matchRequests'),
+    where('course', '==', course),
+    where('status', '==', 'pending')
+  );
+
+  const snap = await getDocs(q);
+  const updates = [];
+
+  snap.forEach((d) => {
+    const data = d.data();
+    const docId = d.id;
+
+    // Same two users in either direction
+    const samePair =
+      (data.senderId === senderId && data.receiverId === receiverId) ||
+      (data.senderId === receiverId && data.receiverId === senderId);
+
+    // Requests posted by either side but still open (receiverId == null)
+    const openByEitherSide =
+      (data.senderId === senderId && data.receiverId === null) ||
+      (data.senderId === receiverId && data.receiverId === null);
+
+    if (samePair || openByEitherSide) {
+      updates.push(
+        updateDoc(doc(db, 'matchRequests', docId), {
+          status: 'accepted',
+          receiverId:
+            data.receiverId || counterpart(data), // fill if it was null
+        })
+      );
+    }
+  });
+
+  // make sure the clicked doc (already pending) is also accepted
+  updates.push(
+    updateDoc(doc(db, 'matchRequests', clickedId), { status: 'accepted' })
+  );
+
+  await Promise.all(updates);
+};
+
+export const getAcceptedPartners = async (uid) => {
+  const q = query(
+    collection(db, 'matchRequests'),
+    where('status', '==', 'accepted'),
+    or(
+      where('senderId', '==', uid),
+      where('receiverId', '==', uid)
+    )
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 };

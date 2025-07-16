@@ -11,12 +11,20 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
+import { getAcceptedPartners } from '../backend/matchService';
 
 const HomeScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
+  const [partners, setPartners] = useState([]);
 
   useEffect(() => {
-    setUser(auth.currentUser);
+    const current = auth.currentUser;
+    setUser(current);
+
+    if (current) {
+      // fetch all documents where status === 'accepted'
+      getAcceptedPartners(current.uid).then(setPartners);
+    }
   }, []);
 
   const handleLogout = () => {
@@ -98,7 +106,7 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Ionicons name="people" size={24} color="#007AFF" />
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>{partners.length}</Text>
             <Text style={styles.statLabel}>Study Partners</Text>
           </View>
           <View style={styles.statCard}>
@@ -132,6 +140,34 @@ const HomeScreen = ({ navigation }) => {
             ))}
           </View>
         </View>
+        
+        {/* Study Partners – shows only when you have ≥1 */}
+        {partners.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Study Partners</Text>
+            {partners.map((p) => {
+              const otherUid =
+                p.senderId === user.uid ? p.receiverId : p.senderId;
+              const label = p.course;
+              const partnerBio = p.bio || 'No bio provided.';
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={styles.partnerCard}
+                  onPress={() => Alert.alert(label, partnerBio)}
+                >
+                  <Ionicons name="person-circle" size={36} color="#007AFF" />
+                  <View style={{ marginLeft: 10 }}>
+                    <Text style={{ fontWeight: '600' }}>{label}</Text>
+                    <Text style={{ fontSize: 12, color: '#888' }}>
+                      Partner&nbsp;ID: {otherUid.slice(0, 6)}…
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         {/* Recent Activity */}
         <View style={styles.section}>
@@ -290,6 +326,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
   },
+  partnerCard: {
+  flexDirection: 'row',
+  backgroundColor: '#fff',
+  padding: 12,
+  borderRadius: 12,
+  marginBottom: 10,
+  shadowColor: '#000',
+  shadowOpacity: 0.05,
+  shadowOffset: { width: 0, height: 2 },
+  shadowRadius: 4,
+  elevation: 2,
+},
+
   activityContainer: {
     backgroundColor: '#fff',
     borderRadius: 12,
