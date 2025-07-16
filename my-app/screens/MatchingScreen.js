@@ -30,8 +30,6 @@ const MatchingScreen = ({ navigation }) => {
     }
   }, []);
 
-
-
   const [myCourses, setMyCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState('');
   const [incoming, setIncoming] = useState([]);
@@ -66,7 +64,7 @@ const MatchingScreen = ({ navigation }) => {
     }
   };
 
-    const loadMyCourses = async (uid) => {
+  const loadMyCourses = async (uid) => {
     try {
       const all = await getMyMatchRequests(uid);
       const userCourses = all
@@ -79,17 +77,16 @@ const MatchingScreen = ({ navigation }) => {
   };
 
   const handleApply = async (reqId) => {
-  try {
-    await applyToMatchRequest(reqId, uid);
-    Alert.alert('Applied', 'Your request has been sent.');
-    loadIncoming();
-    const data = await getOpenMatchRequests(selectedCourse, uid);
-    setOpen(data);
-  } catch (e) {
-    Alert.alert('Error', e.message);
-  }
-};
-
+    try {
+      await applyToMatchRequest(reqId, uid);
+      Alert.alert('Applied', 'Your request has been sent.');
+      loadIncoming();
+      const data = await getOpenMatchRequests(selectedCourse, uid);
+      setOpen(data);
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    }
+  };
 
   useEffect(() => {
     const loadOpen = async () => {
@@ -147,355 +144,638 @@ const MatchingScreen = ({ navigation }) => {
   if (showForm) {
     return (
       <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={80}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={{ flex: 1 }}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="arrow-back" size={24} color="#007AFF" />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Add Course</Text>
-            </View>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={80}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.headerRow}>
+                <TouchableOpacity onPress={() => setShowForm(false)} style={styles.backButton}>
+                  <Ionicons name="arrow-back" size={24} color="#007AFF" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Add Course</Text>
+                <View style={styles.headerSpacer} />
+              </View>
 
-        <ScrollView contentContainerStyle={styles.formScroll}>
-          {/* subject + catalog */}
-          <Text style={styles.label}>Subject *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="CS"
-            value={form.subject}
-            autoCapitalize="characters"
-            onChangeText={(t) => setForm({ ...form, subject: t.toUpperCase() })}
-          />
-          <Text style={[styles.label, { marginTop: 12 }]}>Number *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="2100"
-            keyboardType="numeric"
-            value={form.catalog}
-            onChangeText={(t) => setForm({ ...form, catalog: t })}
-          />
+              <ScrollView contentContainerStyle={styles.formScroll} showsVerticalScrollIndicator={false}>
+                {/* Subject + Catalog */}
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>Subject *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="CS"
+                    value={form.subject}
+                    autoCapitalize="characters"
+                    onChangeText={(t) => setForm({ ...form, subject: t.toUpperCase() })}
+                  />
+                </View>
 
-          {/* search sections */}
-          <TouchableOpacity
-            style={styles.searchBtn}
-            onPress={async () => {
-              if (!form.subject || !form.catalog) {
-                return Alert.alert('Enter subject & number');
-              }
-              try {
-                setLoadingSections(true);
-                const secs = await getCourseSections(
-                  form.subject,
-                  form.catalog
-                );
-                setSections(secs);
-                if (secs.length === 0) Alert.alert('No sections found');
-              } catch (e) {
-                Alert.alert('Error', e.message);
-              } finally {
-                setLoadingSections(false);
-              }
-            }}
-          >
-            <Ionicons name="search" size={18} color="#fff" />
-            <Text style={styles.searchText}>Search Sections</Text>
-          </TouchableOpacity>
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>Number *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="2100"
+                    keyboardType="numeric"
+                    value={form.catalog}
+                    onChangeText={(t) => setForm({ ...form, catalog: t })}
+                  />
+                </View>
 
-          {/* section list */}
-          {loadingSections && <ActivityIndicator />}
-          {sections.map((s) => {
-            const code = `${s.subject} ${s.catalog} sec ${s.section}`;
-            const chosen = form.courseCode === code;
-            return (
-              <TouchableOpacity
-                key={s.classNbr}
-                style={[styles.secBtn, chosen && styles.secBtnActive]}
-                onPress={() =>
-                  setForm({
-                    ...form,
-                    courseCode: code,
-                    availability: `${s.meetDays} ${s.startTime}-${s.endTime}`,
-                  })
-                }
-              >
-                <Text
-                  style={[styles.secTxt, chosen && styles.secTxtActive]}
-                >{`${code}\n${s.meetDays} ${s.startTime}-${s.endTime} · ${s.component}`}</Text>
-              </TouchableOpacity>
-            );
-          })}
-
-          {/* goals */}
-          <Text style={[styles.label, { marginTop: 20 }]}>Goals / Notes</Text>
-          <TextInput
-            style={[styles.input, { height: 80 }]}
-            multiline
-            value={form.goals}
-            onChangeText={(t) => setForm({ ...form, goals: t })}
-          />
-
-          {/* study time */}
-          <Text style={[styles.label, { marginTop: 20 }]}>Preferred Study Time</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. evenings, weekends"
-            value={form.studyTime}
-            onChangeText={(t) => setForm({ ...form, studyTime: t })}
-          />
-
-          {/* meeting pref */}
-          <Text style={[styles.label, { marginTop: 20 }]}>Meeting Mode</Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-            {meetingOptions.map((o) => (
-              <TouchableOpacity
-                key={o}
-                style={[
-                  styles.meetBtn,
-                  form.meeting === o && styles.meetBtnActive,
-                ]}
-                onPress={() => setForm({ ...form, meeting: o })}
-              >
-                <Text
-                  style={[
-                    styles.meetTxt,
-                    form.meeting === o && styles.meetTxtActive,
-                  ]}
+                {/* Search sections */}
+                <TouchableOpacity
+                  style={styles.searchBtn}
+                  onPress={async () => {
+                    if (!form.subject || !form.catalog) {
+                      return Alert.alert('Enter subject & number');
+                    }
+                    try {
+                      setLoadingSections(true);
+                      const secs = await getCourseSections(
+                        form.subject,
+                        form.catalog
+                      );
+                      setSections(secs);
+                      if (secs.length === 0) Alert.alert('No sections found');
+                    } catch (e) {
+                      Alert.alert('Error', e.message);
+                    } finally {
+                      setLoadingSections(false);
+                    }
+                  }}
                 >
-                  {o}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+                  <Ionicons name="search" size={18} color="#fff" />
+                  <Text style={styles.searchText}>Search Sections</Text>
+                </TouchableOpacity>
 
-          {/* submit */}
-          <TouchableOpacity style={styles.submit} onPress={handleSubmit}>
-            <Ionicons name="send" size={18} color="#fff" />
-            <Text style={styles.submitTxt}>Submit</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-    </TouchableWithoutFeedback>
-  </KeyboardAvoidingView>
-</SafeAreaView>
+                {/* Loading indicator */}
+                {loadingSections && (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color="#007AFF" />
+                    <Text style={styles.loadingText}>Loading sections...</Text>
+                  </View>
+                )}
+
+                {/* Section list */}
+                {sections.length > 0 && (
+                  <View style={styles.sectionsContainer}>
+                    <Text style={styles.sectionHeader}>Available Sections</Text>
+                    {sections.map((s) => {
+                      const code = `${s.subject} ${s.catalog} sec ${s.section}`;
+                      const chosen = form.courseCode === code;
+                      return (
+                        <TouchableOpacity
+                          key={s.classNbr}
+                          style={[styles.secBtn, chosen && styles.secBtnActive]}
+                          onPress={() =>
+                            setForm({
+                              ...form,
+                              courseCode: code,
+                              availability: `${s.meetDays} ${s.startTime}-${s.endTime}`,
+                            })
+                          }
+                        >
+                          <Text style={[styles.secTxt, chosen && styles.secTxtActive]}>
+                            {code}
+                          </Text>
+                          <Text style={[styles.secSubtxt, chosen && styles.secSubtxtActive]}>
+                            {s.meetDays} {s.startTime}-{s.endTime} · {s.component}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Study Time */}
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>Preferred Study Time</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. evenings, weekends"
+                    value={form.studyTime}
+                    onChangeText={(t) => setForm({ ...form, studyTime: t })}
+                  />
+                </View>
+
+                {/* Goals */}
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>Goals / Notes</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    placeholder="Tell potential study partners about your goals..."
+                    multiline
+                    value={form.goals}
+                    onChangeText={(t) => setForm({ ...form, goals: t })}
+                  />
+                </View>
+
+                {/* Meeting preference */}
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>Meeting Mode</Text>
+                  <View style={styles.meetingOptionsContainer}>
+                    {meetingOptions.map((o) => (
+                      <TouchableOpacity
+                        key={o}
+                        style={[
+                          styles.meetBtn,
+                          form.meeting === o && styles.meetBtnActive,
+                        ]}
+                        onPress={() => setForm({ ...form, meeting: o })}
+                      >
+                        <Text
+                          style={[
+                            styles.meetTxt,
+                            form.meeting === o && styles.meetTxtActive,
+                          ]}
+                        >
+                          {o}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Submit button */}
+                <TouchableOpacity style={styles.submit} onPress={handleSubmit}>
+                  <Ionicons name="send" size={18} color="#fff" />
+                  <Text style={styles.submitTxt}>Submit Request</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     );
   }
 
-  /* 2️⃣  main-page */
+  /* Main page */
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={styles.mainScroll} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Text style={styles.mainTitle}>Find Study Partners</Text>
-          <TouchableOpacity onPress={loadIncoming}>
+          <TouchableOpacity onPress={loadIncoming} style={styles.refreshButton}>
             <Ionicons name="refresh" size={24} color="#007AFF" />
           </TouchableOpacity>
         </View>
 
-        {/* add course btn */}
+        {/* Add course button */}
         <TouchableOpacity style={styles.addBtn} onPress={() => setShowForm(true)}>
           <Ionicons name="add-circle" size={20} color="#fff" />
           <Text style={styles.addTxt}>Add Course</Text>
         </TouchableOpacity>
 
-        {/* my courses */}
-        <Text style={[styles.label, { marginTop: 30 }]}>My Courses</Text>
-        <View style={styles.courseRow}>
-          {myCourses.length === 0 && (
-            <Text style={{ color: '#666', marginTop: 8 }}>
-              No course added yet.
-            </Text>
+        {/* My courses section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>My Courses</Text>
+          {myCourses.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="school-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyStateText}>No courses added yet</Text>
+              <Text style={styles.emptyStateSubtext}>Add a course to start finding study partners</Text>
+            </View>
+          ) : (
+            <View style={styles.courseRow}>
+              {myCourses.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  style={[
+                    styles.courseChip,
+                    selectedCourse === c && styles.courseChipActive,
+                  ]}
+                  onPress={() => setSelectedCourse(c)}
+                >
+                  <Text
+                    style={[
+                      styles.courseChipTxt,
+                      selectedCourse === c && styles.courseChipTxtActive,
+                    ]}
+                  >
+                    {c}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           )}
-          {myCourses.map((c) => (
-            <TouchableOpacity
-              key={c}
-              style={[
-                styles.courseChip,
-                selectedCourse === c && styles.courseChipActive,
-              ]}
-              onPress={() => setSelectedCourse(c)}
-            >
-              <Text
-                style={[
-                  styles.courseChipTxt,
-                  selectedCourse === c && styles.courseChipTxtActive,
-                ]}
-              >
-                {c}
-              </Text>
-            </TouchableOpacity>
-          ))}
         </View>
 
-        {/* incoming matches */}
-        <Text style={[styles.label, { marginTop: 30 }]}>Incoming Requests</Text>
-        {loadingIncoming && <ActivityIndicator />}
-        {incoming
-          .filter((m) => m.course === selectedCourse || selectedCourse === '')
-          .map((m) => (
-            <View key={m.id} style={styles.matchCard}>
-              <Ionicons name="person-circle" size={38} color="#007AFF" />
-              <View style={{ marginLeft: 10, flex: 1 }}>
-                <Text style={{ fontWeight: '600' }}>{m.course}</Text>
-                <Text style={{ fontSize: 12, color: '#666' }}>
-                  {m.studyTime} · {m.meetingPreference}
-                </Text>
-                <Text style={{ fontSize: 12, color: '#888' }}>{m.bio}</Text>
-              </View>
+        {/* Incoming requests section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Incoming Requests</Text>
+          {loadingIncoming ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#007AFF" />
+              <Text style={styles.loadingText}>Loading requests...</Text>
             </View>
-          ))}
-              {incoming.length === 0 && !loadingIncoming && (
-                  <Text style={{ color:'#666', marginTop:8 }}>No requests yet.</Text>
-                )}
+          ) : incoming.filter((m) => m.course === selectedCourse || selectedCourse === '').length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="mail-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyStateText}>No incoming requests</Text>
+              <Text style={styles.emptyStateSubtext}>
+                {selectedCourse ? `No requests for ${selectedCourse}` : 'Select a course to see requests'}
+              </Text>
+            </View>
+          ) : (
+            incoming
+              .filter((m) => m.course === selectedCourse || selectedCourse === '')
+              .map((m) => (
+                <View key={m.id} style={styles.matchCard}>
+                  <View style={styles.avatarContainer}>
+                    <Ionicons name="person" size={24} color="#007AFF" />
+                  </View>
+                  <View style={styles.matchInfo}>
+                    <Text style={styles.matchCourse}>{m.course}</Text>
+                    <Text style={styles.matchDetails}>
+                      {m.studyTime} · {m.meetingPreference}
+                    </Text>
+                    <Text style={styles.matchBio}>{m.bio}</Text>
+                  </View>
+                </View>
+              ))
+          )}
+        </View>
 
-                {selectedCourse !== '' && (
-                  <>
-                    <Text style={[styles.label, { marginTop: 30 }]}>Open Requests</Text>
-                    {loadingOpen && <ActivityIndicator />}
-                    {open.length === 0 && !loadingOpen && (
-                      <Text style={{ color:'#666', marginTop:8 }}>
-                        No open requests for this course.
-                      </Text>
-                    )}
-
-                    {open.map((m) => (
-                      <View key={m.id} style={styles.matchCard}>
-                        <Ionicons name="person-circle-outline" size={36} color="#999" />
-                        <View style={{ marginLeft: 10, flex: 1 }}>
-                          <Text style={{ fontWeight:'600' }}>{m.course}</Text>
-                          <Text style={{ fontSize:12, color:'#666' }}>
-                            {m.studyTime} · {m.meetingPreference}
-                          </Text>
-                          <Text style={{ fontSize:12, color:'#888' }}>{m.bio}</Text>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.applyBtn}
-                          onPress={() => handleApply(m.id)}
-                        >
-                          <Text style={styles.applyTxt}>Apply</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </>
-                )}
+        {/* Open requests section */}
+        {selectedCourse !== '' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Open Requests - {selectedCourse}</Text>
+            {loadingOpen ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#007AFF" />
+                <Text style={styles.loadingText}>Loading open requests...</Text>
+              </View>
+            ) : open.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="people-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyStateText}>No open requests</Text>
+                <Text style={styles.emptyStateSubtext}>Be the first to create a request for this course</Text>
+              </View>
+            ) : (
+              open.map((m) => (
+                <View key={m.id} style={styles.matchCard}>
+                  <View style={styles.avatarContainer}>
+                    <Ionicons name="person-outline" size={24} color="#999" />
+                  </View>
+                  <View style={styles.matchInfo}>
+                    <Text style={styles.matchCourse}>{m.course}</Text>
+                    <Text style={styles.matchDetails}>
+                      {m.studyTime} · {m.meetingPreference}
+                    </Text>
+                    <Text style={styles.matchBio}>{m.bio}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.applyBtn}
+                    onPress={() => handleApply(m.id)}
+                  >
+                    <Text style={styles.applyTxt}>Apply</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
-}
+};
 
-/* ─── styles ─────────────────────────────────────────────── */
+/* Styles */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f8f9fa' 
+  },
+  
+  // Header styles
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 10,
+    justifyContent: 'space-between',
   },
-  mainTitle: { fontSize: 28, fontWeight: 'bold', color: '#333', flex: 1 },
-  headerTitle: { fontSize: 20, fontWeight: '600', color: '#333', marginLeft: 12 },
+  backButton: {
+    padding: 8,
+    marginLeft: -8,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  mainTitle: { 
+    fontSize: 28, 
+    fontWeight: 'bold', 
+    color: '#1a1a1a',
+    textAlign: 'center',
+    flex: 1,
+  },
+  headerTitle: { 
+    fontSize: 20, 
+    fontWeight: '600', 
+    color: '#1a1a1a',
+    textAlign: 'center',
+    flex: 1,
+  },
+  refreshButton: {
+    padding: 8,
+    marginRight: -8,
+  },
 
-  /* main page */
+  // Main page styles
+  mainScroll: { 
+    paddingBottom: 40 
+  },
   addBtn: {
     marginTop: 15,
     marginHorizontal: 20,
     flexDirection: 'row',
     backgroundColor: '#007AFF',
     borderRadius: 12,
+    paddingVertical: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#007AFF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addTxt: { 
+    color: '#fff', 
+    fontWeight: '600', 
+    fontSize: 16 
+  },
+
+  // Section styles
+  section: {
+    marginTop: 30,
+    paddingHorizontal: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 12,
+  },
+
+  // Course chips
+  courseRow: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 8,
+  },
+  courseChip: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  courseChipActive: { 
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  courseChipTxt: { 
+    color: '#333', 
+    fontWeight: '500',
+    fontSize: 14,
+  },
+  courseChipTxtActive: { 
+    color: '#fff' 
+  },
+
+  // Match cards
+  matchCard: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+    alignItems: 'center',
+  },
+  avatarContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#f0f7ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  matchInfo: {
+    flex: 1,
+  },
+  matchCourse: { 
+    fontWeight: '600',
+    fontSize: 16,
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  matchDetails: { 
+    fontSize: 13, 
+    color: '#666',
+    marginBottom: 4,
+  },
+  matchBio: { 
+    fontSize: 13, 
+    color: '#888',
+    lineHeight: 18,
+  },
+
+  // Apply button
+  applyBtn: {
+    backgroundColor: '#34C759',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginLeft: 12,
+  },
+  applyTxt: { 
+    color: '#fff', 
+    fontWeight: '600', 
+    fontSize: 14 
+  },
+
+  // Empty states
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#666',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+
+  // Loading states
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#666',
+  },
+
+  // Form styles
+  formScroll: { 
+    paddingHorizontal: 20, 
+    paddingBottom: 40 
+  },
+  formSection: {
+    marginBottom: 20,
+  },
+  label: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    fontSize: 16,
+    color: '#333',
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  
+  // Search button
+  searchBtn: {
+    marginBottom: 20,
+    flexDirection: 'row',
+    backgroundColor: '#007AFF',
+    borderRadius: 10,
     paddingVertical: 14,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
   },
-  addTxt: { color: '#fff', fontWeight: '600', fontSize: 16 },
-  courseRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  courseChip: {
-    backgroundColor: '#e0e0e0',
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-  },
-  courseChipActive: { backgroundColor: '#007AFF' },
-  courseChipTxt: { color: '#333', fontWeight: '500' },
-  courseChipTxtActive: { color: '#fff' },
-  matchCard: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    marginHorizontal: 20,
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 2,
+  searchText: { 
+    color: '#fff', 
+    fontWeight: '600',
+    fontSize: 16,
   },
 
-  /* add-form */
-  formScroll: { paddingHorizontal: 20, paddingBottom: 40 },
-  label: { fontSize: 16, fontWeight: '600', color: '#333' },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 12,
+  // Sections
+  sectionsContainer: {
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 12,
+  },
+  secBtn: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    marginTop: 4,
   },
-  searchBtn: {
-    marginTop: 12,
-    flexDirection: 'row',
+  secBtnActive: { 
     backgroundColor: '#007AFF',
-    borderRadius: 8,
-    paddingVertical: 10,
-    justifyContent: 'center',
-    gap: 6,
+    borderColor: '#007AFF',
   },
-  searchText: { color: '#fff', fontWeight: '600' },
-  secBtn: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 10,
+  secTxt: { 
+    color: '#333', 
+    fontWeight: '600',
+    fontSize: 16,
+    marginBottom: 4,
   },
-  secBtnActive: { backgroundColor: '#007AFF' },
-  secTxt: { color: '#333', fontWeight: '500' },
-  secTxtActive: { color: '#fff' },
+  secTxtActive: { 
+    color: '#fff' 
+  },
+  secSubtxt: {
+    color: '#666',
+    fontSize: 14,
+  },
+  secSubtxtActive: {
+    color: '#fff',
+    opacity: 0.9,
+  },
+
+  // Meeting options
+  meetingOptionsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   meetBtn: {
-    backgroundColor: '#f0f0f0',
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 18,
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    flex: 1,
+    alignItems: 'center',
   },
-  meetBtnActive: { backgroundColor: '#007AFF' },
-  meetTxt: { color: '#333', fontWeight: '500' },
-  meetTxtActive: { color: '#fff' },
+  meetBtnActive: { 
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  meetTxt: { 
+    color: '#333', 
+    fontWeight: '500',
+    fontSize: 14,
+  },
+  meetTxtActive: { 
+    color: '#fff' 
+  },
+
+  // Submit button
   submit: {
     flexDirection: 'row',
     backgroundColor: '#34C759',
     borderRadius: 12,
-    paddingVertical: 14,
+    paddingVertical: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 28,
+    gap: 8,
+    marginTop: 20,
+    shadowColor: '#34C759',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  submitTxt: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  applyBtn: {
-    backgroundColor: '#34C759',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    alignSelf: 'center',
+  submitTxt: { 
+    color: '#fff', 
+    fontSize: 16, 
+    fontWeight: '600' 
   },
-  applyTxt: { color: '#fff', fontWeight: '600', fontSize: 12 },
-
 });
 
 export default MatchingScreen;
