@@ -7,6 +7,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 
 // Import screens
+import WelcomeScreen from './screens/WelcomeScreen';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -54,6 +55,17 @@ function MainTabNavigator() {
   );
 }
 
+// Auth Stack Navigator for unauthenticated users
+function AuthStackNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Signup" component={SignupScreen} />
+    </Stack.Navigator>
+  );
+}
+
 // Main App Component
 export default function App() {
   const [user, setUser] = useState(null);
@@ -88,28 +100,13 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           // User is logged in - show main app
-          <Stack.Screen 
-            name="Main" 
-            component={MainTabNavigator} 
-            options={{ headerShown: false }}
-          />
+          <Stack.Screen name="Main" component={MainTabNavigator} />
         ) : (
-          // User is not logged in - show auth screens
-          <>
-            <Stack.Screen 
-              name="Login" 
-              component={LoginScreen} 
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen 
-              name="Signup" 
-              component={SignupScreen} 
-              options={{ headerShown: false }}
-            />
-          </>
+          // User is not logged in - show auth flow starting with welcome screen
+          <Stack.Screen name="Auth" component={AuthStackNavigator} />
         )}
       </Stack.Navigator>
     </NavigationContainer>
