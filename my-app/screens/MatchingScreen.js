@@ -412,32 +412,31 @@ const MatchingScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Incoming requests section */}
-        {(incoming.length > 0 || loadingIncoming) && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Incoming Requests</Text>
+        {/* Incoming Applications section - PROPERLY FIXED */}
+        {(incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null).length > 0 || loadingIncoming) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Incoming Applications</Text>
 
-          {loadingIncoming && <ActivityIndicator />}
+            {loadingIncoming && <ActivityIndicator />}
 
-          {incoming
-            .filter((m) => m.course === selectedCourse || selectedCourse === '')
-            .map((m) => {
-              const iAmSender = m.senderId === uid;
-              const iAmReceiver = m.receiverId === uid;
+            {incoming
+              .filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null) // YOUR requests that got applications
+              .map((m) => {
+                return (
+                  <View key={m.id} style={styles.matchCard}>
+                    <Ionicons name="person-circle" size={38} color="#007AFF" />
+                    <View style={{ marginLeft: 10, flex: 1 }}>
+                      <Text style={{ fontWeight: '600', fontSize: 16 }}>{m.course}</Text>
+                      <Text style={{ fontSize: 13, color: '#666' }}>
+                        {m.studyTime} · {m.meetingPreference}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{m.bio}</Text>
+                      <Text style={{ fontSize: 12, color: '#007AFF', marginTop: 2 }}>
+                        Applied by: {m.receiverName || 'Unknown'}
+                      </Text>
+                    </View>
 
-              return (
-                <View key={m.id} style={styles.matchCard}>
-                  <Ionicons name="person-circle" size={38} color="#007AFF" />
-                  <View style={{ marginLeft: 10, flex: 1 }}>
-                    <Text style={{ fontWeight: '600', fontSize: 16 }}>{m.course}</Text>
-                    <Text style={{ fontSize: 13, color: '#666' }}>
-                      {m.studyTime} · {m.meetingPreference}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{m.bio}</Text>
-                  </View>
-
-                  {/* action area */}
-                  {iAmSender && (
+                    {/* Action buttons - for applications to YOUR requests */}
                     <View style={{ flexDirection: 'row', marginLeft: 10 }}>
                       <TouchableOpacity
                         style={styles.acceptBtn}
@@ -445,7 +444,7 @@ const MatchingScreen = ({ navigation }) => {
                           await acceptMatchRequest(m);
                           loadIncoming();
                           setOpen(await getOpenMatchRequests(selectedCourse, uid));
-                          loadCurrentPartners(selectedCourse); // Refresh current partners
+                          loadCurrentPartners(selectedCourse);
                         }}
                       >
                         <Text style={styles.btnTxt}>Accept</Text>
@@ -461,22 +460,80 @@ const MatchingScreen = ({ navigation }) => {
                         <Text style={styles.btnTxt}>Reject</Text>
                       </TouchableOpacity>
                     </View>
-                  )}
+                  </View>
+                );
+              })}
 
-                  {iAmReceiver && (
-                    <Text style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
-                      Waiting for sender…
+            {incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null).length === 0 && !loadingIncoming && (
+              <Text style={{ color: '#666', marginTop: 8 }}>No applications yet.</Text>
+            )}
+          </View>
+        )}
+
+        {/* My Applications to Others - NEW SECTION */}
+        {(incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.receiverId === uid).length > 0) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>My Applications</Text>
+            
+            {incoming
+              .filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.receiverId === uid)
+              .map((m) => (
+                <View key={m.id} style={styles.matchCard}>
+                  <View style={styles.avatarContainer}>
+                    <Ionicons name="paper-plane" size={24} color="#007AFF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600', fontSize: 16 }}>{m.course}</Text>
+                    <Text style={{ fontSize: 13, color: '#666' }}>
+                      {m.studyTime} · {m.meetingPreference}
                     </Text>
-                  )}
+                    <Text style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{m.bio}</Text>
+                    <Text style={{ fontSize: 12, color: '#FFA500', marginTop: 2 }}>
+                      Applied to: {m.senderName || 'Unknown'}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'center', marginLeft: 10 }}>
+                    <Ionicons name="hourglass" size={20} color="#FFA500" />
+                    <Text style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                      Pending
+                    </Text>
+                  </View>
                 </View>
-              );
-            })}
+              ))
+            }
+          </View>
+        )}
 
-          {incoming.length === 0 && !loadingIncoming && (
-            <Text style={{ color: '#666', marginTop: 8 }}>No requests yet.</Text>
-          )}
-        </View>
-      )}
+        {/* My Open Posted Requests section - UPDATED */}
+        {incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId === null).length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>My Open Requests</Text>
+            
+            {incoming
+              .filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId === null)
+              .map((m) => (
+                <View key={m.id} style={styles.matchCard}>
+                  <View style={styles.avatarContainer}>
+                    <Ionicons name="time" size={24} color="#FFA500" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600', fontSize: 16 }}>{m.course}</Text>
+                    <Text style={{ fontSize: 13, color: '#666' }}>
+                      {m.studyTime} · {m.meetingPreference}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{m.bio}</Text>
+                  </View>
+                  <View style={{ alignItems: 'center', marginLeft: 10 }}>
+                    <Ionicons name="eye" size={20} color="#007AFF" />
+                    <Text style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                      Waiting
+                    </Text>
+                  </View>
+                </View>
+              ))
+            }
+          </View>
+        )}
 
         {/* Open requests section */}
         {selectedCourse !== '' && (
