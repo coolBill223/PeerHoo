@@ -86,6 +86,14 @@ const HomeScreen = ({ navigation }) => {
     { type: 'message', title: 'Message from Alex about project', time: '2 days ago' },
   ];
 
+  // Helper function to get the first name safely
+  const getFirstName = () => {
+    if (user?.displayName && typeof user.displayName === 'string' && user.displayName.trim()) {
+      return `, ${user.displayName.split(' ')[0]}`;
+    }
+    return '';
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -93,7 +101,7 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>
-              Welcome back{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
+              Welcome back{getFirstName()}!
             </Text>
             <Text style={styles.subtitle}>Ready to study together?</Text>
           </View>
@@ -146,25 +154,29 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Study Partners</Text>
             {partners.map((p) => {
-              const otherUid = p.partnerId ?? '(unknown)';
-              const label = p.course;
               return (
                 <TouchableOpacity
                   key={p.id}
                   style={styles.partnerCard}
-                  onPress={() => Alert.alert(label, `Partner UID: ${otherUid}`)}
+                  onPress={() => Alert.alert(
+                    `${p.partnerName} - ${p.course}`,
+                    `Computing ID: ${p.partnerComputingId || 'Not available'}`
+                  )}
                 >
                   <Ionicons name="person-circle" size={36} color="#007AFF" />
-                  <View style={{ marginLeft: 10 }}>
-                    <Text style={{ fontWeight: '600' }}>{label}</Text>
-                    <Text style={{ fontSize: 12, color: '#888' }}>
-                      Partner&nbsp;ID: {otherUid?.slice?.(0, 6) ?? 'Unknown'}…
-                    </Text>
+                  <View style={{ marginLeft: 10, flex: 1 }}>
+                    <Text style={{ fontWeight: '600', fontSize: 16 }}>{p.partnerName}</Text>
+                    <Text style={{ fontSize: 14, color: '#007AFF', marginTop: 2 }}>{p.course}</Text>
+                    {p.partnerComputingId && (
+                      <Text style={{ fontSize: 12, color: '#888', marginTop: 1 }}>
+                        {p.partnerComputingId}
+                      </Text>
+                    )}
                   </View>
+                  <Ionicons name="chevron-forward" size={16} color="#ccc" />
                 </TouchableOpacity>
               );
             })}
-
           </View>
         )}
 
@@ -326,17 +338,18 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   partnerCard: {
-  flexDirection: 'row',
-  backgroundColor: '#fff',
-  padding: 12,
-  borderRadius: 12,
-  marginBottom: 10,
-  shadowColor: '#000',
-  shadowOpacity: 0.05,
-  shadowOffset: { width: 0, height: 2 },
-  shadowRadius: 4,
-  elevation: 2,
-},
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+    alignItems: 'center',
+  },
 
   activityContainer: {
     backgroundColor: '#fff',

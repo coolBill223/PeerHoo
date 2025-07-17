@@ -9,6 +9,7 @@ import {
   doc,
   deleteDoc,
   serverTimestamp,
+  getDoc,
 } from 'firebase/firestore';
 
 /**
@@ -50,6 +51,46 @@ export const getPartnersForCourse = async (uid, course) => {
 };
 
 /**
+ * Get user info by UID
+ */
+const getUserInfo = async (uid) => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', uid));
+    if (userDoc.exists()) {
+      return userDoc.data();
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching user info:', error);
+    return null;
+  }
+};
+
+/**
+ * Get partners for a specific course with user names
+ */
+export const getPartnersForCourseWithNames = async (uid, course) => {
+  const partners = await getPartnersForCourse(uid, course);
+  
+  const partnersWithNames = await Promise.all(
+    partners.map(async (partner) => {
+      const partnerId = partner.userA === uid ? partner.userB : partner.userA;
+      const userInfo = await getUserInfo(partnerId);
+      
+      return {
+        id: partner.id,
+        partnerId,
+        course: partner.course,
+        partnerName: userInfo?.name || 'Unknown User',
+        partnerComputingId: userInfo?.computingId || '',
+      };
+    })
+  );
+  
+  return partnersWithNames.sort((a, b) => a.partnerName.localeCompare(b.partnerName));
+};
+
+/**
  * check can send match or not
  * one course can have max=2 partners
  */
@@ -83,18 +124,35 @@ export const requestDeletePartner = async (partnerId, uid) => {
 };
 
 /**
- * get the partner record
+ * get the partner record with user names
  */
-export const getAcceptedPartners = async (uid) =>{
+export const getAcceptedPartners = async (uid) => {
   const q = query(collection(db, 'partners'));
   const snap = await getDocs(q);
 
-  return snap.docs
+  const partners = snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((p) => p.userA === uid || p.userB === uid)
-    .map((p) => ({
-      id: p.id,
-      partnerId: p.userA === uid ? p.userB : p.userA,
-      course: p.course,
-    }));
+    .filter((p) => p.userA === uid || p.userB === uid);
+
+  const partnersWithNames = await Promise.all(
+    partners.map(async (p) => {
+      const partnerId = p.userA === uid ? p.userB : p.userA;
+      const userInfo = await getUserInfo(partnerId);
+      
+      return {
+        id: p.id,
+        partnerId,
+        course: p.course,
+        partnerName: userInfo?.name || 'Unknown User',
+        partnerComputingId: userInfo?.computingId || '',
+      };
+    })
+  );
+
+  // Sort by course first, then by partner name
+  return partnersWithNames.sort((a, b) => {
+    const courseCompare = a.course.localeCompare(b.course);
+    if (courseCompare !== 0) return courseCompare;
+    return a.partnerName.localeCompare(b.partnerName);
+  });
 };

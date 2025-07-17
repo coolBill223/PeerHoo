@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getCourseSections } from '../backend/courseService';
 import { sendMatchRequest, getIncomingMatchRequests, getMyMatchRequests, getOpenMatchRequests, applyToMatchRequest,
   acceptMatchRequest, rejectMatchRequest } from '../backend/matchService';
+import { getPartnersForCourseWithNames } from '../backend/partnerService';
 import { auth } from '../firebaseConfig';
 
 const MatchingScreen = ({ navigation }) => {
@@ -33,6 +34,8 @@ const MatchingScreen = ({ navigation }) => {
 
   const [myCourses, setMyCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState('');
+  const [currentPartners, setCurrentPartners] = useState([]);
+  const [loadingPartners, setLoadingPartners] = useState(false);
   const [incoming, setIncoming] = useState([]);
   const [loadingIncoming, setLoadingIncoming] = useState(false);
   const [open, setOpen] = useState([]);
@@ -77,6 +80,19 @@ const MatchingScreen = ({ navigation }) => {
     }
   };
 
+  const loadCurrentPartners = async (course) => {
+    if (!course || !uid) return;
+    try {
+      setLoadingPartners(true);
+      const partners = await getPartnersForCourseWithNames(uid, course);
+      setCurrentPartners(partners);
+    } catch (error) {
+      console.error('Failed to load current partners:', error);
+    } finally {
+      setLoadingPartners(false);
+    }
+  };
+
   const handleApply = async (reqId) => {
     try {
       await applyToMatchRequest(reqId, uid);
@@ -101,6 +117,7 @@ const MatchingScreen = ({ navigation }) => {
       }
     };
     loadOpen();
+    loadCurrentPartners(selectedCourse);
   }, [selectedCourse, uid]); 
 
   useEffect(() => {
@@ -362,6 +379,39 @@ const MatchingScreen = ({ navigation }) => {
           )}
         </View>
 
+        {/* Current Partners for Selected Course */}
+        {selectedCourse !== '' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Current Partners - {selectedCourse}</Text>
+            {loadingPartners ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#007AFF" />
+                <Text style={styles.loadingText}>Loading partners...</Text>
+              </View>
+            ) : currentPartners.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="people-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyStateText}>No current partners</Text>
+                <Text style={styles.emptyStateSubtext}>Find study partners for this course below</Text>
+              </View>
+            ) : (
+              currentPartners.map((partner) => (
+                <View key={partner.id} style={styles.partnerCard}>
+                  <View style={styles.avatarContainer}>
+                    <Ionicons name="person" size={24} color="#007AFF" />
+                  </View>
+                  <View style={styles.partnerInfo}>
+                    <Text style={styles.partnerName}>{partner.partnerName}</Text>
+                    <Text style={styles.partnerDetails}>
+                      Computing ID: {partner.partnerComputingId || 'Not available'}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+
         {/* Incoming requests section */}
         {(incoming.length > 0 || loadingIncoming) && (
         <View style={styles.section}>
@@ -395,6 +445,7 @@ const MatchingScreen = ({ navigation }) => {
                           await acceptMatchRequest(m);
                           loadIncoming();
                           setOpen(await getOpenMatchRequests(selectedCourse, uid));
+                          loadCurrentPartners(selectedCourse); // Refresh current partners
                         }}
                       >
                         <Text style={styles.btnTxt}>Accept</Text>
@@ -583,6 +634,34 @@ const styles = StyleSheet.create({
     color: '#fff' 
   },
 
+  // Current Partners styles
+  partnerCard: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+    alignItems: 'center',
+  },
+  partnerInfo: {
+    flex: 1,
+  },
+  partnerName: { 
+    fontWeight: '600',
+    fontSize: 16,
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  partnerDetails: { 
+    fontSize: 13, 
+    color: '#666',
+  },
+
   // Match cards
   matchCard: {
     flexDirection: 'row',
@@ -626,7 +705,25 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Apply button
+  // Button styles
+  acceptBtn: {
+    backgroundColor: '#34C759',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  rejectBtn: {
+    backgroundColor: '#FF3B30',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  btnTxt: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
   applyBtn: {
     backgroundColor: '#34C759',
     paddingVertical: 8,
