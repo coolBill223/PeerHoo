@@ -146,26 +146,25 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Study Partners</Text>
             {partners.map((p) => {
-              const otherUid =
-                p.senderId === user.uid ? p.receiverId : p.senderId;
+              const otherUid = p.partnerId ?? '(unknown)';
               const label = p.course;
-              const partnerBio = p.bio || 'No bio provided.';
               return (
                 <TouchableOpacity
                   key={p.id}
                   style={styles.partnerCard}
-                  onPress={() => Alert.alert(label, partnerBio)}
+                  onPress={() => Alert.alert(label, `Partner UID: ${otherUid}`)}
                 >
                   <Ionicons name="person-circle" size={36} color="#007AFF" />
                   <View style={{ marginLeft: 10 }}>
                     <Text style={{ fontWeight: '600' }}>{label}</Text>
                     <Text style={{ fontSize: 12, color: '#888' }}>
-                      Partner&nbsp;ID: {otherUid.slice(0, 6)}…
+                      Partner&nbsp;ID: {otherUid?.slice?.(0, 6) ?? 'Unknown'}…
                     </Text>
                   </View>
                 </TouchableOpacity>
               );
             })}
+
           </View>
         )}
 
