@@ -11,7 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
-import { getAcceptedPartners } from '../backend/matchService';
+import { getAcceptedPartners } from '../backend/partnerService';
 
 const HomeScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);

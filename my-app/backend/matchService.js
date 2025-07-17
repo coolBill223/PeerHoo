@@ -10,6 +10,7 @@ import {
   or,
   serverTimestamp,
 } from 'firebase/firestore';
+import { createPartnerPair } from './partnerService';
 
 /**
  * submit form
@@ -162,18 +163,10 @@ export const acceptMatchRequest = async (req) => {
   );
 
   await Promise.all(updates);
-};
 
-export const getAcceptedPartners = async (uid) => {
-  const q = query(
-    collection(db, 'matchRequests'),
-    where('status', '==', 'accepted'),
-    or(
-      where('senderId', '==', uid),
-      where('receiverId', '==', uid)
-    )
-  );
-
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  await createPartnerPair({
+    userA: senderId,
+    userB: receiverId,
+    course,
+  })
 };
