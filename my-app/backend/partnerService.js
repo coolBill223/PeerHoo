@@ -15,13 +15,25 @@ import {
  * create partner (used by match service)
  */
 export const createPartnerPair = async ({ userA, userB, course }) => {
-  const ref = collection(db, 'partners');
-  await addDoc(ref, {
+  const q = query(collection(db, 'partners'), where('course', '==', course));
+  const snap = await getDocs(q);
+
+  const alreadyExists = snap.docs.some(d => {
+    const data = d.data();
+    return (
+      (data.userA === userA && data.userB === userB) ||
+      (data.userA === userB && data.userB === userA)
+    );
+  });
+
+  if (alreadyExists) return;
+
+  await addDoc(collection(db, 'partners'), {
     userA,
     userB,
     course,
     createdAt: serverTimestamp(),
-    deleteRequestedBy: [],  //If both request to delete, then delete
+    deleteRequestedBy: [],
   });
 };
 
