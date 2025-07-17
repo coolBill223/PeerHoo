@@ -15,6 +15,7 @@ import MatchingScreen from './screens/MatchingScreen';
 import ChatScreen from './screens/ChatScreen';
 import NotesScreen from './screens/NotesScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import PartnerProfileScreen from './screens/PartnerProfileScreen'; // Add this import
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -66,6 +67,22 @@ function AuthStackNavigator() {
   );
 }
 
+// Main App Stack Navigator (includes the tab navigator and modal screens)
+function MainStackNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+      <Stack.Screen 
+        name="PartnerProfile" 
+        component={PartnerProfileScreen}
+        options={{
+          presentation: 'card', // Use 'modal' for iOS-style modal presentation
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
+
 // Main App Component
 export default function App() {
   const [user, setUser] = useState(null);
@@ -102,8 +119,8 @@ export default function App() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          // User is logged in - show main app
-          <Stack.Screen name="Main" component={MainTabNavigator} />
+          // User is logged in - show main app with stack navigator
+          <Stack.Screen name="Main" component={MainStackNavigator} />
         ) : (
           // User is not logged in - show auth flow starting with welcome screen
           <Stack.Screen name="Auth" component={AuthStackNavigator} />

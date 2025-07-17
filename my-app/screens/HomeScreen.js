@@ -268,10 +268,7 @@ const HomeScreen = ({ navigation }) => {
                 <TouchableOpacity
                   key={p.id}
                   style={styles.partnerCard}
-                  onPress={() => Alert.alert(
-                    `${p.partnerName} - ${p.course}`,
-                    `Computing ID: ${p.partnerComputingId || 'Not available'}`
-                  )}
+                  onPress={() => navigation.navigate('PartnerProfile', { partner: p })}
                 >
                   <Ionicons name="person-circle" size={36} color="#007AFF" />
                   <View style={{ marginLeft: 10, flex: 1 }}>

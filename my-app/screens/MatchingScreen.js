@@ -396,7 +396,11 @@ const MatchingScreen = ({ navigation }) => {
               </View>
             ) : (
               currentPartners.map((partner) => (
-                <View key={partner.id} style={styles.partnerCard}>
+                <TouchableOpacity
+                  key={partner.id}
+                  style={styles.partnerCard}
+                  onPress={() => navigation.navigate('PartnerProfile', { partner })}
+                >
                   <View style={styles.avatarContainer}>
                     <Ionicons name="person" size={24} color="#007AFF" />
                   </View>
@@ -406,7 +410,8 @@ const MatchingScreen = ({ navigation }) => {
                       Computing ID: {partner.partnerComputingId || 'Not available'}
                     </Text>
                   </View>
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color="#ccc" />
+                </TouchableOpacity>
               ))
             )}
           </View>
