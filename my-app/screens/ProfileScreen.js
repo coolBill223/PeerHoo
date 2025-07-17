@@ -30,17 +30,17 @@ const ProfileScreen = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [computingID, setComputingID] = useState('');
-  const [courses, setCourses] = useState(['CS 4720', 'MATH 3100']);
+  const [courses, setCourses] = useState([]);
   const [newCourse, setNewCourse] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [studyTimes, setStudyTimes] = useState(['Evenings', 'Weekends']);
+  const [meetingPreference, setMeetingPreference] = useState('In-person & Virtual');
 
   useEffect(() => {
-    // Get user data from Firebase Auth
     const user = auth.currentUser;
     if (user) {
       setName(user.displayName || 'Your Name');
       setEmail(user.email || 'your.email@virginia.edu');
-      // Extract computing ID from email (assuming UVA email format)
       if (user.email) {
         const computingId = user.email.split('@')[0];
         setComputingID(computingId);
@@ -56,17 +56,20 @@ const ProfileScreen = () => {
       [{ text: 'OK', onPress: () => setIsEditing(false) }]
     );
   };
-
+  
   const handleAddCourse = () => {
     if (newCourse.trim() && !courses.includes(newCourse.trim())) {
       setCourses([...courses, newCourse.trim()]);
       setNewCourse('');
     }
   };
-
+  
   const handleRemoveCourse = (courseToRemove) => {
     setCourses(courses.filter(course => course !== courseToRemove));
   };
+
+  const studyTimeOptions = ['Mornings', 'Evenings', 'Nights', 'Weekdays', 'Weekends'];
+  const meetingOptions = ['In-person', 'Virtual', 'Both'];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -89,26 +92,29 @@ const ProfileScreen = () => {
         {/* Avatar Section */}
         <View style={styles.avatarSection}>
           <Ionicons name={selectedAvatar} size={100} color="#007AFF" />
-          <Text style={styles.avatarLabel}>Select Your Avatar</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.avatarPicker}>
-            {avatarOptions.map((icon) => (
-              <TouchableOpacity
-                key={icon}
-                onPress={() => setSelectedAvatar(icon)}
-                style={[
-                  styles.avatarOption,
-                  selectedAvatar === icon && styles.avatarOptionSelected,
-                ]}
-                disabled={!isEditing}
-              >
-                <Ionicons 
-                  name={icon} 
-                  size={32} 
-                  color={selectedAvatar === icon ? '#fff' : '#007AFF'} 
-                />
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {isEditing && (
+          <>
+            <Text style={styles.avatarLabel}>Select Your Avatar</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.avatarPicker}>
+              {avatarOptions.map((icon) => (
+                <TouchableOpacity
+                  key={icon}
+                  onPress={() => setSelectedAvatar(icon)}
+                  style={[
+                    styles.avatarOption,
+                    selectedAvatar === icon && styles.avatarOptionSelected,
+                  ]}
+                >
+                  <Ionicons 
+                    name={icon} 
+                    size={32} 
+                    color={selectedAvatar === icon ? '#fff' : '#007AFF'} 
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
         </View>
 
         {/* Name Section */}
@@ -170,19 +176,25 @@ const ProfileScreen = () => {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>My Courses</Text>
           <View style={styles.coursesContainer}>
-            {courses.map((course, index) => (
-              <View key={index} style={styles.courseChip}>
-                <Text style={styles.courseText}>{course}</Text>
-                {isEditing && (
-                  <TouchableOpacity 
-                    onPress={() => handleRemoveCourse(course)}
-                    style={styles.removeCourseButton}
-                  >
-                    <Ionicons name="close" size={16} color="#FF3B30" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
+          {courses.length === 0 ? (
+          <Text style={styles.emptyCoursesText}>
+            {isEditing ? "No courses yet, add some!" : "No courses added yet."}
+          </Text>
+        ) : (
+          courses.map((course, index) => (
+            <View key={index} style={styles.courseChip}>
+              <Text style={styles.courseText}>{course}</Text>
+              {isEditing && (
+                <TouchableOpacity 
+                  onPress={() => handleRemoveCourse(course)}
+                  style={styles.removeCourseButton}
+                >
+                  <Ionicons name="close" size={16} color="#FF3B30" />
+                </TouchableOpacity>
+              )}
+            </View>
+          ))
+        )}
             
             {isEditing && (
               <View style={styles.addCourseContainer}>
@@ -206,24 +218,91 @@ const ProfileScreen = () => {
 
         {/* Study Preferences */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Study Preferences</Text>
-          <View style={styles.preferencesContainer}>
-            <View style={styles.preferenceItem}>
-              <Ionicons name="time" size={20} color="#FF9500" />
-              <View style={styles.preferenceText}>
-                <Text style={styles.preferenceLabel}>Preferred Study Time</Text>
-                <Text style={styles.preferenceValue}>Evenings & Weekends</Text>
-              </View>
-            </View>
-            <View style={styles.preferenceItem}>
-              <Ionicons name="location" size={20} color="#34C759" />
-              <View style={styles.preferenceText}>
-                <Text style={styles.preferenceLabel}>Meeting Preference</Text>
-                <Text style={styles.preferenceValue}>In-person & Virtual</Text>
-              </View>
+  <Text style={styles.sectionLabel}>Study Preferences</Text>
+  <View style={styles.preferencesContainer}>
+    
+    {/* Preferred Study Time */}
+    <View style={styles.preferenceItem}>
+      <Ionicons name="time" size={20} color="#FF9500" />
+      <View style={styles.preferenceText}>
+        <Text style={styles.preferenceLabel}>Preferred Study Time</Text>
+        {isEditing ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+            {studyTimeOptions.map(option => {
+              const isSelected = studyTimes.includes(option);
+              return (
+                <TouchableOpacity
+                  key={option}
+                  style={[
+                    styles.optionButton,
+                    isSelected && styles.optionSelected,
+                  ]}
+                  onPress={() => {
+                    if (isSelected) {
+                      setStudyTimes(prev => prev.filter(t => t !== option));
+                    } else {
+                      setStudyTimes(prev => [...prev, option]);
+                    }
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      isSelected && styles.optionTextSelected,
+                    ]}
+                  >
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={styles.preferenceValue}>
+            {studyTimes.length > 0 ? studyTimes.join(', ') : 'None selected'}
+          </Text>
+        )}
+      </View>
+    </View>
+
+          {/* Meeting Preference */}
+          <View style={styles.preferenceItem}>
+            <Ionicons name="location" size={20} color="#34C759" />
+            <View style={styles.preferenceText}>
+              <Text style={styles.preferenceLabel}>Meeting Preference</Text>
+              {isEditing ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+                  {meetingOptions.map(option => {
+                    const isSelected = meetingPreference === option;
+                    return (
+                      <TouchableOpacity
+                        key={option}
+                        style={[
+                          styles.optionButton,
+                          isSelected && styles.optionSelected,
+                        ]}
+                        onPress={() => setMeetingPreference(option)}
+                      >
+                        <Text
+                          style={[
+                            styles.optionText,
+                            isSelected && styles.optionTextSelected,
+                          ]}
+                        >
+                          {option}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Text style={styles.preferenceValue}>{meetingPreference}</Text>
+              )}
             </View>
           </View>
+
         </View>
+      </View>
 
         {/* Save Button */}
         {isEditing && (
@@ -388,6 +467,12 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  emptyCoursesText: {
+    color: '#888',
+    fontStyle: 'italic',
+    marginBottom: 8,
+    fontSize: 14,
+  },  
   courseChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -460,6 +545,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  optionButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  optionSelected: {
+    backgroundColor: '#007AFF',
+  },
+  optionText: {
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  optionTextSelected: {
+    color: '#fff',
+  },  
   saveButton: {
     flexDirection: 'row',
     backgroundColor: '#34C759',

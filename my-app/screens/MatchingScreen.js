@@ -363,27 +363,32 @@ const MatchingScreen = ({ navigation }) => {
         </View>
 
         {/* Incoming requests section */}
-         <Text style={[styles.label, { marginTop: 30 }]}>Incoming Requests</Text>
+        {(incoming.length > 0 || loadingIncoming) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Incoming Requests</Text>
+
           {loadingIncoming && <ActivityIndicator />}
+
           {incoming
             .filter((m) => m.course === selectedCourse || selectedCourse === '')
             .map((m) => {
               const iAmSender = m.senderId === uid;
               const iAmReceiver = m.receiverId === uid;
+
               return (
                 <View key={m.id} style={styles.matchCard}>
                   <Ionicons name="person-circle" size={38} color="#007AFF" />
                   <View style={{ marginLeft: 10, flex: 1 }}>
-                    <Text style={{ fontWeight: '600' }}>{m.course}</Text>
-                    <Text style={{ fontSize: 12, color: '#666' }}>
+                    <Text style={{ fontWeight: '600', fontSize: 16 }}>{m.course}</Text>
+                    <Text style={{ fontSize: 13, color: '#666' }}>
                       {m.studyTime} · {m.meetingPreference}
                     </Text>
-                    <Text style={{ fontSize: 12, color: '#888' }}>{m.bio}</Text>
+                    <Text style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{m.bio}</Text>
                   </View>
 
                   {/* action area */}
                   {iAmSender && (
-                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <View style={{ flexDirection: 'row', marginLeft: 10 }}>
                       <TouchableOpacity
                         style={styles.acceptBtn}
                         onPress={async () => {
@@ -408,16 +413,19 @@ const MatchingScreen = ({ navigation }) => {
                   )}
 
                   {iAmReceiver && (
-                    <Text style={{ fontSize: 12, color: '#888' }}>
+                    <Text style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
                       Waiting for sender…
                     </Text>
                   )}
                 </View>
               );
             })}
+
           {incoming.length === 0 && !loadingIncoming && (
             <Text style={{ color: '#666', marginTop: 8 }}>No requests yet.</Text>
           )}
+        </View>
+      )}
 
         {/* Open requests section */}
         {selectedCourse !== '' && (
