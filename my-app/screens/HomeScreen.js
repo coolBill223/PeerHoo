@@ -12,20 +12,124 @@ import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import { getAcceptedPartners } from '../backend/partnerService';
+import { ensureUserDocument, refreshAllPartnerNames } from '../backend/userService';
 
 const HomeScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
   const [partners, setPartners] = useState([]);
 
   useEffect(() => {
-    const current = auth.currentUser;
-    setUser(current);
+    const initializeUser = async () => {
+      const current = auth.currentUser;
+      setUser(current);
 
-    if (current) {
-      // fetch all documents where status === 'accepted'
-      getAcceptedPartners(current.uid).then(setPartners);
-    }
+      if (current) {
+        // Ensure user document exists in Firestore
+        await ensureUserDocument();
+        
+        // fetch all documents where status === 'accepted'
+        try {
+          const partnersData = await getAcceptedPartners(current.uid);
+          console.log('Partners data:', partnersData);
+          setPartners(partnersData);
+        } catch (error) {
+          console.error('Error fetching partners:', error);
+        }
+      }
+    };
+
+    initializeUser();
   }, []);
+
+  // Function to reload partners after updating
+  const reloadPartners = async () => {
+    const current = auth.currentUser;
+    if (current) {
+      try {
+        console.log('Reloading partners...');
+        
+        const partnersData = await getAcceptedPartners(current.uid);
+        console.log('Reloaded partners data:', partnersData);
+        
+        // Only update state if we actually got data
+        if (partnersData && Array.isArray(partnersData)) {
+          setPartners(partnersData);
+        } else {
+          console.log('No partners data received, keeping current state');
+        }
+      } catch (error) {
+        console.error('Error reloading partners:', error);
+        // Don't clear partners on error, just log it
+      }
+    }
+  };
+
+  // Function to search thoroughly for real names
+  const findRealNames = async () => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        Alert.alert('Error', 'No authenticated user found');
+        return;
+      }
+      
+      // Don't clear partners - keep them visible during search
+      console.log('Starting real name search...');
+      
+      // Use the new refresh function
+      const result = await refreshAllPartnerNames();
+      
+      if (result.success) {
+        let message = 'Search completed!\n\n';
+        let foundImprovements = 0;
+        
+        const userUpdates = result.updates || [];
+        foundImprovements += userUpdates.length;
+        
+        if (userUpdates.length > 0) {
+          message += `✅ Updated ${userUpdates.length} user names:\n`;
+          userUpdates.forEach(update => {
+            message += `• ${update.oldName} → ${update.newName}\n`;
+          });
+          message += '\n';
+        }
+        
+        if (foundImprovements > 0) {
+          message += `🎉 Found ${foundImprovements} improved names!`;
+        } else {
+          message += '⚠️ No name improvements found. This might mean:\n';
+          message += '• Partners are already showing correct names\n';
+          message += '• Partners haven\'t been active recently\n';
+          message += '• Original registration data is not available';
+        }
+        
+        // Always reload partners after search, regardless of result
+        await reloadPartners();
+        
+        Alert.alert(
+          'Search Complete!',
+          message,
+          [
+            { 
+              text: 'OK', 
+              onPress: async () => {
+                // Force another refresh when user dismisses alert
+                await reloadPartners();
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Error', result.message);
+        // Reload partners even on error
+        await reloadPartners();
+      }
+    } catch (error) {
+      console.error('Error in findRealNames:', error);
+      Alert.alert('Error', `Failed to search for names: ${error.message}`);
+      await reloadPartners();
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -105,9 +209,15 @@ const HomeScreen = ({ navigation }) => {
             </Text>
             <Text style={styles.subtitle}>Ready to study together?</Text>
           </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {/* Find real names button */}
+            <TouchableOpacity style={styles.updateButton} onPress={findRealNames}>
+              <Ionicons name="search" size={20} color="#5856D6" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Stats Cards */}
@@ -256,6 +366,10 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     padding: 8,
+  },
+  updateButton: {
+    padding: 8,
+    marginRight: 8,
   },
   statsContainer: {
     flexDirection: 'row',
