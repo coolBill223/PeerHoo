@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { getOrCreateChat } from '../backend/chatService';
+import { auth } from '../firebaseConfig';
 
 const PartnerProfileScreen = ({ route, navigation }) => {
   const { partner } = route.params;
@@ -33,14 +35,32 @@ const PartnerProfileScreen = ({ route, navigation }) => {
           <View style={styles.headerSpacer} />
         </View>
 
-        {/* Avatar and Name Section */}
-        <View style={styles.profileSection}>
+        {/* Avatar + Chat Icon + Name */}
+        <View style={styles.avatarSection}>
           <View style={styles.avatarContainer}>
-            <Ionicons 
-              name="person-circle" 
-              size={80} 
-              color="#007AFF" 
-            />
+            <Ionicons name="person-circle" size={80} color="#007AFF" />
+            <TouchableOpacity
+              onPress={async () => {
+                const currentUser = auth.currentUser;
+                const partnerId = partnerData?.id || partnerData?.partnerId;
+                if (!currentUser || !partnerId) return;
+
+                try {
+                  const chatId = await getOrCreateChat(currentUser.uid, partnerId);
+
+                  navigation.navigate('Chat', {
+                    chatId,
+                    partner,
+                  });
+                  
+                } catch (error) {
+                  console.error('Failed to start chat:', error);
+                }
+              }}
+              style={styles.chatIconButton}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={20} color="#fff" />
+            </TouchableOpacity>
           </View>
           <Text style={styles.name}>
             {partnerData.partnerName || 'Study Partner'}
@@ -187,7 +207,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 10,
+    paddingBottom: 0,
     justifyContent: 'space-between',
   },
   backButton: {
@@ -209,19 +229,30 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     paddingHorizontal: 20,
   },
+  avatarSection: {
+    alignItems: 'center',
+    paddingVertical: 25,
+    position: 'relative',
+  },
   avatarContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#f0f7ff',
+    position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
   },
+  chatIconButton: {
+    position: 'absolute',
+    top: 0,
+    right: -130,
+    backgroundColor: '#007AFF',
+    padding: 6,
+    borderRadius: 16,
+    zIndex: 2,
+  },  
   name: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#1a1a1a',
+    paddingTop: 10,
     marginBottom: 5,
   },
   computingId: {

@@ -9,6 +9,9 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import { Alert } from 'react-native';
 
 const NotesScreen = () => {
   const [view, setView] = useState('browse'); // 'browse', 'detail', 'upload'
@@ -117,6 +120,63 @@ const NotesScreen = () => {
     </View>
   );
 
+  // Upload Note Functionality
+  const handleUploadPress = async () => {
+    Alert.alert(
+      "Upload Note",
+      "Choose a file source",
+      [
+        {
+          text: "Take Photo or Video",
+        onPress: async () => {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert("Permission Denied", "Camera access is required to take a photo.");
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: [ImagePicker.MediaType.Image],
+            allowsEditing: false,
+            quality: 1,
+          });
+          if (!result.canceled) {
+            console.log("Captured media:", result.assets[0]);
+          }
+          },
+        },
+        {
+          text: "Photo Library",
+          onPress: async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.All,
+              allowsEditing: false,
+              quality: 1,
+            });
+            if (!result.canceled) {
+              console.log("Selected from library:", result.assets[0]);
+            }
+          },
+        },
+        {
+          text: "Browse",
+          onPress: async () => {
+            const result = await DocumentPicker.getDocumentAsync({
+              type: ['application/pdf', 'image/*'],
+            });
+            if (result.type === 'success') {
+              console.log("Browsed file:", result);
+            }
+          },
+        },
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   // --- UPLOAD VIEW ---
   const renderUploadView = () => (
     <ScrollView contentContainerStyle={styles.scrollView}>
@@ -134,7 +194,7 @@ const NotesScreen = () => {
         <Text style={styles.detailLabel}>Course</Text>
         <TextInput style={styles.input} placeholder="e.g., CS 1010" />
 
-        <TouchableOpacity style={styles.uploadFileButton}>
+        <TouchableOpacity style={styles.uploadFileButton} onPress={handleUploadPress}>
           <Ionicons name="document-attach-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.uploadFileText}>Upload PDF or Image</Text>
         </TouchableOpacity>
@@ -167,7 +227,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 10,
   },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#333' },
+  title: { fontSize: 28, fontWeight: 'bold', color: '#333', textAlign: 'center' },
   courseSelector: {
     flexDirection: 'row',
     flexWrap: 'wrap',

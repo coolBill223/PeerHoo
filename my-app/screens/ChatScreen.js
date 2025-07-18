@@ -1,19 +1,22 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
+  FlatList,
   TextInput,
   TouchableOpacity,
   SafeAreaView,
   StyleSheet,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
-  PanResponder,
 } from 'react-native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import PartnerProfileScreen from './PartnerProfileScreen';
+
+const Stack = createNativeStackNavigator();
 
 const mockThreads = [
   {
@@ -38,52 +41,12 @@ const mockThreads = [
   },
 ];
 
-const ChatScreen = ({ navigation }) => {
-  const [currentThread, setCurrentThread] = useState(null);
-  const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState([]);
-  const flatListRef = useRef(null);
-
-  // Swipe-to-go-back gesture
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        gestureState.dx > 25 && Math.abs(gestureState.dy) < 20,
-      onPanResponderEnd: (_, gestureState) => {
-        if (gestureState.dx > 50) setCurrentThread(null);
-      },
-    })
-  ).current;
-
-  const openThread = (thread) => {
-    setCurrentThread(thread);
-    setMessages(thread.messages);
-  };
-
-  const handleSend = () => {
-    if (message.trim().length === 0) return;
-
-    const newMessage = {
-      id: Date.now().toString(),
-      text: message,
-      sender: 'user',
-      timestamp: new Date(),
-    };
-
-    const updated = [...messages, newMessage];
-    setMessages(updated);
-    setMessage('');
-
-    // Scroll to bottom (last message)
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-
-    // TODO: Push new message to Firebase
-  };
-
-  const renderInboxItem = ({ item }) => (
-    <TouchableOpacity style={styles.threadCard} onPress={() => openThread(item)}>
+const InboxScreen = ({ navigation }) => {
+  const renderItem = ({ item }) => (
+    <TouchableOpacity
+      style={styles.threadCard}
+      onPress={() => navigation.navigate('ChatThread', { thread: item })}
+    >
       <Ionicons name="person-circle-outline" size={40} color="#007AFF" style={{ marginRight: 10 }} />
       <View style={{ flex: 1 }}>
         <Text style={styles.threadName}>{item.name}</Text>
@@ -92,6 +55,42 @@ const ChatScreen = ({ navigation }) => {
       <Text style={styles.threadTime}>{item.timestamp}</Text>
     </TouchableOpacity>
   );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Messages</Text>
+      </View>
+      <FlatList
+        data={mockThreads}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.messagesContainer}
+      />
+    </SafeAreaView>
+  );
+};
+
+const ChatThreadScreen = ({ route, navigation }) => {
+  const { thread } = route.params;
+  const [message, setMessage] = useState('');
+  const [messages, setMessages] = useState(thread.messages || []);
+  const flatListRef = useRef(null);
+
+  const handleSend = () => {
+    if (!message.trim()) return;
+    const newMessage = {
+      id: Date.now().toString(),
+      text: message,
+      sender: 'user',
+      timestamp: new Date(),
+    };
+    setMessages([...messages, newMessage]);
+    setMessage('');
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  };
 
   const renderMessage = ({ item }) => (
     <View
@@ -112,65 +111,70 @@ const ChatScreen = ({ navigation }) => {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.flex} {...(currentThread ? panResponder.panHandlers : {})}>
-            {/* Header */}
-            <View style={styles.header}>
-              {currentThread ? (
-                <TouchableOpacity onPress={() => setCurrentThread(null)} style={{ marginRight: 10 }}>
-                  <Ionicons name="chevron-back" size={24} color="#007AFF" />
-                </TouchableOpacity>
-              ) : null}
-              <Text style={styles.title}>
-                {currentThread ? currentThread.name : 'Messages'}
-              </Text>
-            </View>
+          <View style={styles.flex}>
+          <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 10 }}>
+            <Ionicons name="chevron-back" size={24} color="#007AFF" />
+          </TouchableOpacity>
 
-            {/* Inbox */}
-            {!currentThread && (
-              <FlatList
-                data={mockThreads}
-                keyExtractor={(item) => item.id}
-                renderItem={renderInboxItem}
-                contentContainerStyle={styles.messagesContainer}
-                keyboardShouldPersistTaps="handled"
+          <View style={styles.nameContainer}>
+          <Text style={styles.title}>{thread.name}</Text>
+          <TouchableOpacity
+            onPress={() =>
+              navigation.navigate('PartnerProfile', {
+                partner: {
+                  partnerName: thread.name,
+                  partnerComputingId: thread.computingId || 'N/A',
+                  course: thread.course || '',
+                  bio: thread.bio || '',
+                  studyTime: thread.studyTime || '',
+                  meetingPreference: thread.meetingPreference || '',
+                },
+              })
+            }
+            style={styles.chevronButton}
+          >
+            <Ionicons name="chevron-forward" size={22} color="#007AFF" />
+          </TouchableOpacity>
+        </View>
+
+        </View>
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderMessage}
+              contentContainerStyle={[styles.messagesContainer, { flexGrow: 1 }]}
+            />
+            <View style={styles.inputContainer}>
+              <TextInput
+                value={message}
+                onChangeText={setMessage}
+                placeholder="Type a message..."
+                style={styles.textInput}
               />
-            )}
-
-            {/* Conversation */}
-            {currentThread && (
-              <>
-                <FlatList
-                  ref={flatListRef}
-                  data={messages}
-                  renderItem={renderMessage}
-                  keyExtractor={(item) => item.id}
-                  contentContainerStyle={[styles.messagesContainer, { flexGrow: 1 }]}
-                  keyboardShouldPersistTaps="handled"
-                />
-
-                {/* Input */}
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    value={message}
-                    onChangeText={setMessage}
-                    placeholder="Type a message..."
-                    style={styles.textInput}
-                  />
-                  <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
-                    <Ionicons name="send" size={20} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+              <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
+                <Ionicons name="send" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
+
+const ChatScreen = () => (
+  <Stack.Navigator screenOptions={{ gestureEnabled: true }}>
+    <Stack.Screen name="Inbox" component={InboxScreen} options={{ headerShown: false }} />
+    <Stack.Screen name="ChatThread" component={ChatThreadScreen} options={{ headerShown: false }} />
+    <Stack.Screen name="PartnerProfile" component={PartnerProfileScreen} options={{ headerShown: false }} />    
+  </Stack.Navigator>
+);
+
+export default ChatScreen;
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
@@ -200,6 +204,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 10,
   },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  chevronButton: {
+    paddingLeft: 5,
+    paddingVertical: 5,
+  },  
   bubbleLeft: {
     backgroundColor: '#b3afaf',
     alignSelf: 'flex-start',
@@ -241,5 +254,3 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
 });
-
-export default ChatScreen;

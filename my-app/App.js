@@ -5,14 +5,16 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebaseConfig';
+import 'react-native-gesture-handler';
 
 // Import screens
+import ChatScreen from './screens/ChatScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import HomeScreen from './screens/HomeScreen';
 import MatchingScreen from './screens/MatchingScreen';
-import ChatScreen from './screens/ChatScreen';
+
 import NotesScreen from './screens/NotesScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import PartnerProfileScreen from './screens/PartnerProfileScreen'; // Add this import
