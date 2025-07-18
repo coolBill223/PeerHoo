@@ -9,7 +9,7 @@ const TERM   = '1258';          // 2025 Fall
  * @returns {Promise<Array>} section/time
  */
 function formatTime(raw) {
-  if (!raw || typeof raw !== 'string') return '';  // 防止 undefined 或 null
+  if (!raw || typeof raw !== 'string') return '';  // avoid undefined or null
   const parts = raw.split('.')[0].split('.');
   const hour = parts[0] ?? '00';
   const minute = parts[1]?.padStart(2, '0') ?? '00';
