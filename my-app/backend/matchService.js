@@ -101,7 +101,7 @@ export const getMyMatchRequests = async (uid) => {
 };
 
 /**
- * Get incoming match requests for a user
+ * Get incoming match requests for a user - updated to include rejected applications
  * @param {string} uid
  */
 export const getIncomingMatchRequests = async (uid) => {
@@ -116,15 +116,29 @@ export const getIncomingMatchRequests = async (uid) => {
     where('senderId', '==', uid),
     where('status', '==', 'pending')
   );
+
+  // New query for rejected applications where user was the receiver
+  const rejectedRecvQ = query(
+    collection(db, 'matchRequests'),
+    where('receiverId', '==', uid),
+    where('status', '==', 'rejected')
+  );
   
-  const [recvSnap, sendSnap] = await Promise.all([getDocs(recvQ), getDocs(sendQ)]);
+  const [recvSnap, sendSnap, rejectedRecvSnap] = await Promise.all([
+    getDocs(recvQ), 
+    getDocs(sendQ), 
+    getDocs(rejectedRecvQ)
+  ]);
 
   const recv = recvSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const send = sendSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(m => m.receiverId); // Only include if someone has applied
+  
+  // Include rejected applications where user was the receiver (applied to someone else's request)
+  const rejectedRecv = rejectedRecvSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     
-  return [...recv, ...send];
+  return [...recv, ...send, ...rejectedRecv];
 };
 
 /**

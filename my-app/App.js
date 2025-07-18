@@ -4,7 +4,10 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './firebaseConfig';
+import { auth, db } from './firebaseConfig';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { getUnreadCount } from './backend/chatService';
+import { View, Text } from 'react-native';
 import 'react-native-gesture-handler';
 
 // Import screens
@@ -16,13 +19,88 @@ import MatchingScreen from './screens/MatchingScreen';
 import ChatScreen from './screens/ChatScreen';
 import NotesScreen from './screens/NotesScreen';
 import ProfileScreen from './screens/ProfileScreen';
-import PartnerProfileScreen from './screens/PartnerProfileScreen'; // Add this import
+import PartnerProfileScreen from './screens/PartnerProfileScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Custom tab bar icon component with notification badge
+const TabBarIcon = ({ name, focused, color, size, hasNotification, notificationCount }) => {
+  const iconName = focused ? name : `${name}-outline`;
+  
+  return (
+    <View style={{ position: 'relative' }}>
+      <Ionicons name={iconName} size={size} color={color} />
+      {hasNotification && notificationCount > 0 && (
+        <View style={{
+          position: 'absolute',
+          top: -2,
+          right: -6,
+          backgroundColor: '#FF3B30',
+          borderRadius: 8,
+          minWidth: 16,
+          height: 16,
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingHorizontal: 4,
+          borderWidth: 2,
+          borderColor: '#fff',
+        }}>
+          <Text style={{
+            color: '#fff',
+            fontSize: 10,
+            fontWeight: 'bold',
+          }}>
+            {notificationCount > 9 ? '9+' : notificationCount}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+};
+
 // Main Tab Navigator for authenticated users
 function MainTabNavigator() {
+  const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
+
+  useEffect(() => {
+    if (!auth.currentUser?.uid) {
+      setTotalUnreadMessages(0);
+      return;
+    }
+
+    // Set up real-time listener for chats
+    const chatsQuery = query(
+      collection(db, 'chats'), 
+      where('participants', 'array-contains', auth.currentUser.uid)
+    );
+    
+    const unsubscribe = onSnapshot(chatsQuery, async (snapshot) => {
+      try {
+        if (snapshot.empty) {
+          setTotalUnreadMessages(0);
+          return;
+        }
+
+        // Get unread count for each chat
+        const unreadPromises = snapshot.docs.map(async (chatDoc) => {
+          return await getUnreadCount(chatDoc.id, auth.currentUser.uid);
+        });
+        
+        const unreadCounts = await Promise.all(unreadPromises);
+        const totalUnread = unreadCounts.reduce((sum, count) => sum + count, 0);
+        
+        console.log('Navigation: Total unread messages:', totalUnread);
+        setTotalUnreadMessages(totalUnread);
+      } catch (error) {
+        console.error('Error calculating unread messages for navigation:', error);
+        setTotalUnreadMessages(0);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [auth.currentUser?.uid]);
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -30,18 +108,27 @@ function MainTabNavigator() {
           let iconName;
 
           if (route.name === 'Home') {
-            iconName = focused ? 'home' : 'home-outline';
+            iconName = 'home';
           } else if (route.name === 'Find Partners') {
-            iconName = focused ? 'people' : 'people-outline';
+            iconName = 'people';
           } else if (route.name === 'Chat') {
-            iconName = focused ? 'chatbubble' : 'chatbubble-outline';
+            iconName = 'chatbubble';
           } else if (route.name === 'Notes') {
-            iconName = focused ? 'document-text' : 'document-text-outline';
+            iconName = 'document-text';
           } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
+            iconName = 'person';
           }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return (
+            <TabBarIcon 
+              name={iconName} 
+              focused={focused}
+              color={color} 
+              size={size} 
+              hasNotification={route.name === 'Chat' && totalUnreadMessages > 0}
+              notificationCount={totalUnreadMessages}
+            />
+          );
         },
         tabBarActiveTintColor: '#007AFF',
         tabBarInactiveTintColor: 'gray',

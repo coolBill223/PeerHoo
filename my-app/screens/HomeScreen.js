@@ -10,13 +10,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
-import { auth } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 import { getAcceptedPartners } from '../backend/partnerService';
-import { ensureUserDocument, refreshAllPartnerNames } from '../backend/userService';
+import { ensureUserDocument } from '../backend/userService';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { getUnreadCount } from '../backend/chatService';
 
 const HomeScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
   const [partners, setPartners] = useState([]);
+  const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -32,6 +35,9 @@ const HomeScreen = ({ navigation }) => {
           const partnersData = await getAcceptedPartners(current.uid);
           console.log('Partners data:', partnersData);
           setPartners(partnersData);
+          
+          // Load unread message count
+          await loadUnreadMessageCount(current.uid);
         } catch (error) {
           console.error('Error fetching partners:', error);
         }
@@ -40,6 +46,38 @@ const HomeScreen = ({ navigation }) => {
 
     initializeUser();
   }, []);
+
+  // Function to load total unread message count
+  const loadUnreadMessageCount = async (userId) => {
+    try {
+      // Get all chats for this user
+      const chatsQuery = query(
+        collection(db, 'chats'), 
+        where('participants', 'array-contains', userId)
+      );
+      
+      const chatDocs = await getDocs(chatsQuery);
+      
+      if (chatDocs.empty) {
+        setTotalUnreadMessages(0);
+        return;
+      }
+
+      // Get unread count for each chat
+      const unreadPromises = chatDocs.docs.map(async (chatDoc) => {
+        return await getUnreadCount(chatDoc.id, userId);
+      });
+      
+      const unreadCounts = await Promise.all(unreadPromises);
+      const totalUnread = unreadCounts.reduce((sum, count) => sum + count, 0);
+      
+      console.log('Total unread messages:', totalUnread);
+      setTotalUnreadMessages(totalUnread);
+    } catch (error) {
+      console.error('Error loading unread message count:', error);
+      setTotalUnreadMessages(0);
+    }
+  };
 
   // Function to reload partners after updating
   const reloadPartners = async () => {
@@ -57,6 +95,9 @@ const HomeScreen = ({ navigation }) => {
         } else {
           console.log('No partners data received, keeping current state');
         }
+        
+        // Reload unread count
+        await loadUnreadMessageCount(current.uid);
       } catch (error) {
         console.error('Error reloading partners:', error);
         // Don't clear partners on error, just log it
@@ -64,72 +105,16 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // Function to search thoroughly for real names
-  const findRealNames = async () => {
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        Alert.alert('Error', 'No authenticated user found');
-        return;
+  // Reload unread count when screen comes into focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (auth.currentUser?.uid) {
+        loadUnreadMessageCount(auth.currentUser.uid);
       }
-      
-      // Don't clear partners - keep them visible during search
-      console.log('Starting real name search...');
-      
-      // Use the new refresh function
-      const result = await refreshAllPartnerNames();
-      
-      if (result.success) {
-        let message = 'Search completed!\n\n';
-        let foundImprovements = 0;
-        
-        const userUpdates = result.updates || [];
-        foundImprovements += userUpdates.length;
-        
-        if (userUpdates.length > 0) {
-          message += `✅ Updated ${userUpdates.length} user names:\n`;
-          userUpdates.forEach(update => {
-            message += `• ${update.oldName} → ${update.newName}\n`;
-          });
-          message += '\n';
-        }
-        
-        if (foundImprovements > 0) {
-          message += `🎉 Found ${foundImprovements} improved names!`;
-        } else {
-          message += '⚠️ No name improvements found. This might mean:\n';
-          message += '• Partners are already showing correct names\n';
-          message += '• Partners haven\'t been active recently\n';
-          message += '• Original registration data is not available';
-        }
-        
-        // Always reload partners after search, regardless of result
-        await reloadPartners();
-        
-        Alert.alert(
-          'Search Complete!',
-          message,
-          [
-            { 
-              text: 'OK', 
-              onPress: async () => {
-                // Force another refresh when user dismisses alert
-                await reloadPartners();
-              }
-            }
-          ]
-        );
-      } else {
-        Alert.alert('Error', result.message);
-        // Reload partners even on error
-        await reloadPartners();
-      }
-    } catch (error) {
-      console.error('Error in findRealNames:', error);
-      Alert.alert('Error', `Failed to search for names: ${error.message}`);
-      await reloadPartners();
-    }
-  };
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -173,7 +158,9 @@ const HomeScreen = ({ navigation }) => {
       icon: 'chatbubble', 
       screen: 'Chat',
       description: 'Chat with study partners',
-      color: '#FF9500' 
+      color: '#FF9500',
+      hasNotification: totalUnreadMessages > 0,
+      notificationCount: totalUnreadMessages
     },
     { 
       title: 'My Profile', 
@@ -209,15 +196,9 @@ const HomeScreen = ({ navigation }) => {
             </Text>
             <Text style={styles.subtitle}>Ready to study together?</Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {/* Find real names button */}
-            <TouchableOpacity style={styles.updateButton} onPress={findRealNames}>
-              <Ionicons name="search" size={20} color="#5856D6" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
+          </TouchableOpacity>
         </View>
 
         {/* Stats Cards */}
@@ -249,8 +230,17 @@ const HomeScreen = ({ navigation }) => {
                 style={styles.actionCard}
                 onPress={() => navigation.navigate(action.screen)}
               >
-                <View style={[styles.actionIcon, { backgroundColor: action.color }]}>
-                  <Ionicons name={action.icon} size={24} color="#fff" />
+                <View style={styles.actionIconContainer}>
+                  <View style={[styles.actionIcon, { backgroundColor: action.color }]}>
+                    <Ionicons name={action.icon} size={24} color="#fff" />
+                  </View>
+                  {action.hasNotification && (
+                    <View style={styles.actionNotificationBadge}>
+                      <Text style={styles.actionNotificationText}>
+                        {action.notificationCount > 9 ? '9+' : action.notificationCount}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <Text style={styles.actionTitle}>{action.title}</Text>
                 <Text style={styles.actionDescription}>{action.description}</Text>
@@ -364,10 +354,6 @@ const styles = StyleSheet.create({
   logoutButton: {
     padding: 8,
   },
-  updateButton: {
-    padding: 8,
-    marginRight: 8,
-  },
   statsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -427,13 +413,35 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  actionIconContainer: {
+    position: 'relative',
+    marginBottom: 10,
+  },
   actionIcon: {
     width: 50,
     height: 50,
     borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+  },
+  actionNotificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  actionNotificationText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   actionTitle: {
     fontSize: 14,

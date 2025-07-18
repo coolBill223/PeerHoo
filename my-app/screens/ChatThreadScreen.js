@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { markChatAsRead } from '../backend/chatService';
 
 const ChatThreadScreen = ({ route, navigation }) => {
   const { thread } = route.params;
@@ -28,6 +29,7 @@ const ChatThreadScreen = ({ route, navigation }) => {
           id: doc.id,
           text: d.text,
           sender: d.senderId === auth.currentUser.uid ? 'user' : 'other',
+          senderId: d.senderId,
           timestamp: d.sentAt?.toDate() ?? new Date(),
         };
       });
@@ -37,6 +39,35 @@ const ChatThreadScreen = ({ route, navigation }) => {
 
     return () => unsubscribe();
   }, [thread.id]);
+
+  // Mark chat as read when component mounts and when it becomes focused
+  useEffect(() => {
+    const markAsRead = async () => {
+      await markChatAsRead(thread.id, auth.currentUser.uid);
+    };
+    
+    markAsRead();
+
+    // Set up focus listener to mark as read when returning to this screen
+    const unsubscribe = navigation.addListener('focus', () => {
+      markAsRead();
+    });
+
+    return unsubscribe;
+  }, [thread.id, navigation]);
+
+  // Mark as read when new messages arrive (if screen is active)
+  useEffect(() => {
+    const markAsRead = async () => {
+      if (messages.length > 0) {
+        await markChatAsRead(thread.id, auth.currentUser.uid);
+      }
+    };
+    
+    // Small delay to ensure the message is fully processed
+    const timeoutId = setTimeout(markAsRead, 500);
+    return () => clearTimeout(timeoutId);
+  }, [messages.length, thread.id]);
 
   const handleSend = async () => {
     if (!message.trim()) return;
@@ -52,7 +83,8 @@ const ChatThreadScreen = ({ route, navigation }) => {
     <View
       style={{
         alignSelf: item.sender === 'user' ? 'flex-end' : 'flex-start',
-        backgroundColor: item.sender === 'user' ? '#007AFF' : '#ccc',
+        backgroundColor: item.senderId === 'system' ? '#f0f0f0' : 
+                        item.sender === 'user' ? '#007AFF' : '#e5e5ea',
         borderRadius: 16,
         marginVertical: 4,
         marginHorizontal: 10,
@@ -60,10 +92,24 @@ const ChatThreadScreen = ({ route, navigation }) => {
         maxWidth: '75%',
       }}
     >
-      <Text style={{ color: '#fff', fontSize: 16 }}>{item.text}</Text>
-      <Text style={{ fontSize: 10, color: '#eee', marginTop: 4, textAlign: 'right' }}>
-        {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      <Text style={{ 
+        color: item.senderId === 'system' ? '#666' : 
+               item.sender === 'user' ? '#fff' : '#000', 
+        fontSize: 16,
+        fontStyle: item.senderId === 'system' ? 'italic' : 'normal'
+      }}>
+        {item.text}
       </Text>
+      {item.senderId !== 'system' && (
+        <Text style={{ 
+          fontSize: 10, 
+          color: item.sender === 'user' ? '#eee' : '#666', 
+          marginTop: 4, 
+          textAlign: 'right' 
+        }}>
+          {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      )}
     </View>
   );
 
@@ -74,7 +120,6 @@ const ChatThreadScreen = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10 }}>
-          {/* FIXED: Use navigation.goBack() instead of navigate('Inbox') */}
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={24} color="#007AFF" />
           </TouchableOpacity>

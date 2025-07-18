@@ -418,14 +418,14 @@ const MatchingScreen = ({ navigation }) => {
         )}
 
         {/* Incoming Applications section - PROPERLY FIXED */}
-        {(incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null).length > 0 || loadingIncoming) && (
+        {(incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null && m.status === 'pending').length > 0 || loadingIncoming) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Incoming Applications</Text>
 
             {loadingIncoming && <ActivityIndicator />}
 
             {incoming
-              .filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null) // YOUR requests that got applications
+              .filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null && m.status === 'pending') // YOUR requests that got applications
               .map((m) => {
                 return (
                   <View key={m.id} style={styles.matchCard}>
@@ -469,13 +469,13 @@ const MatchingScreen = ({ navigation }) => {
                 );
               })}
 
-            {incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null).length === 0 && !loadingIncoming && (
+            {incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null && m.status === 'pending').length === 0 && !loadingIncoming && (
               <Text style={{ color: '#666', marginTop: 8 }}>No applications yet.</Text>
             )}
           </View>
         )}
 
-        {/* My Applications to Others - NEW SECTION */}
+        {/* My Applications to Others - UPDATED TO SHOW REJECTED APPLICATIONS */}
         {(incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.receiverId === uid).length > 0) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>My Applications</Text>
@@ -485,7 +485,11 @@ const MatchingScreen = ({ navigation }) => {
               .map((m) => (
                 <View key={m.id} style={styles.matchCard}>
                   <View style={styles.avatarContainer}>
-                    <Ionicons name="paper-plane" size={24} color="#007AFF" />
+                    <Ionicons 
+                      name={m.status === 'rejected' ? "close-circle" : "paper-plane"} 
+                      size={24} 
+                      color={m.status === 'rejected' ? "#FF3B30" : "#007AFF"} 
+                    />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontWeight: '600', fontSize: 16 }}>{m.course}</Text>
@@ -498,9 +502,18 @@ const MatchingScreen = ({ navigation }) => {
                     </Text>
                   </View>
                   <View style={{ alignItems: 'center', marginLeft: 10 }}>
-                    <Ionicons name="hourglass" size={20} color="#FFA500" />
-                    <Text style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
-                      Pending
+                    <Ionicons 
+                      name={m.status === 'rejected' ? "close-circle" : "hourglass"} 
+                      size={20} 
+                      color={m.status === 'rejected' ? "#FF3B30" : "#FFA500"} 
+                    />
+                    <Text style={{ 
+                      fontSize: 12, 
+                      color: m.status === 'rejected' ? '#FF3B30' : '#888', 
+                      marginTop: 2,
+                      fontWeight: m.status === 'rejected' ? '600' : 'normal'
+                    }}>
+                      {m.status === 'rejected' ? 'Rejected' : 'Pending'}
                     </Text>
                   </View>
                 </View>

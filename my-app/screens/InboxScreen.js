@@ -15,12 +15,13 @@ import { db } from '../firebaseConfig';
 import { collection, query, where, onSnapshot, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { getAcceptedPartners } from '../backend/partnerService';
-import { getOrCreateChat } from '../backend/chatService';
+import { getOrCreateChat, getUnreadCount } from '../backend/chatService';
 
 const InboxScreen = () => {
   const [threads, setThreads] = useState([]);
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [unreadCounts, setUnreadCounts] = useState({});
   const navigation = useNavigation();
 
   useEffect(() => {
@@ -31,6 +32,19 @@ const InboxScreen = () => {
     }
 
     loadData();
+    
+    // Set up real-time listener for chats
+    const chatsQuery = query(
+      collection(db, 'chats'), 
+      where('participants', 'array-contains', auth.currentUser.uid)
+    );
+    
+    const unsubscribe = onSnapshot(chatsQuery, () => {
+      // Reload data when chats change
+      loadData();
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const loadData = async () => {
@@ -54,11 +68,12 @@ const InboxScreen = () => {
       if (chatDocs.empty) {
         console.log('No existing chats found');
         setThreads([]);
+        setUnreadCounts({});
         setLoading(false);
         return;
       }
 
-      // Process each chat
+      // Process each chat and get unread counts
       const threadPromises = chatDocs.docs.map(async (chatDoc) => {
         try {
           const chatData = chatDoc.data();
@@ -77,12 +92,16 @@ const InboxScreen = () => {
           const messagesDocs = await getDocs(messagesQuery);
           const lastMessage = messagesDocs.empty ? null : messagesDocs.docs[0].data();
 
+          // Get unread count
+          const unreadCount = await getUnreadCount(chatDoc.id, auth.currentUser.uid);
+
           return {
             id: chatDoc.id,
             name: userName,
             lastMessage: lastMessage?.text || 'No messages yet',
             timestamp: lastMessage?.sentAt?.toDate()?.toLocaleTimeString() || '',
             otherUid: otherUid,
+            unreadCount: unreadCount,
           };
         } catch (error) {
           console.error('Error processing chat:', chatDoc.id, error);
@@ -93,8 +112,17 @@ const InboxScreen = () => {
       const threadsResults = await Promise.all(threadPromises);
       const validThreads = threadsResults.filter(thread => thread !== null);
       
+      // Create unread counts object
+      const newUnreadCounts = {};
+      validThreads.forEach(thread => {
+        newUnreadCounts[thread.id] = thread.unreadCount;
+      });
+      
       console.log('Threads processed:', validThreads.length);
+      console.log('Unread counts:', newUnreadCounts);
+      
       setThreads(validThreads);
+      setUnreadCounts(newUnreadCounts);
       setLoading(false);
       
     } catch (error) {
@@ -113,6 +141,7 @@ const InboxScreen = () => {
         name: partner.partnerName,
         lastMessage: 'Start your conversation!',
         timestamp: new Date().toLocaleTimeString(),
+        unreadCount: 0,
       };
 
       navigation.navigate('ChatThread', { thread });
@@ -127,12 +156,28 @@ const InboxScreen = () => {
       style={styles.threadItem}
       onPress={() => navigation.navigate('ChatThread', { thread: item })}
     >
-      <Ionicons name="person-circle-outline" size={40} color="#007AFF" style={{ marginRight: 10 }} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.threadName}>{item.name}</Text>
-        <Text style={styles.lastMessage}>{item.lastMessage}</Text>
+      <View style={styles.avatarContainer}>
+        <Ionicons name="person-circle-outline" size={40} color="#007AFF" />
+        {item.unreadCount > 0 && (
+          <View style={styles.notificationBadge}>
+            <Text style={styles.notificationText}>
+              {item.unreadCount > 9 ? '9+' : item.unreadCount}
+            </Text>
+          </View>
+        )}
       </View>
-      <Text style={styles.timestamp}>{item.timestamp}</Text>
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={[styles.threadName, item.unreadCount > 0 && styles.unreadThreadName]}>
+          {item.name}
+        </Text>
+        <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.unreadLastMessage]}>
+          {item.lastMessage}
+        </Text>
+      </View>
+      <View style={styles.timestampContainer}>
+        <Text style={styles.timestamp}>{item.timestamp}</Text>
+        {item.unreadCount > 0 && <View style={styles.unreadDot} />}
+      </View>
     </TouchableOpacity>
   );
 
@@ -152,6 +197,9 @@ const InboxScreen = () => {
       </View>
     </TouchableOpacity>
   );
+
+  // Calculate total unread messages
+  const totalUnreadCount = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
 
   if (!auth.currentUser?.uid) {
     return (
@@ -183,7 +231,16 @@ const InboxScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Messages</Text>
+      <View style={styles.headerContainer}>
+        <Text style={styles.title}>Messages</Text>
+        {totalUnreadCount > 0 && (
+          <View style={styles.totalUnreadBadge}>
+            <Text style={styles.totalUnreadText}>
+              {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+            </Text>
+          </View>
+        )}
+      </View>
       
       {!hasContent ? (
         <View style={styles.emptyContainer}>
@@ -244,11 +301,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: 20,
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    margin: 20,
     color: '#333',
+    flex: 1,
+  },
+  totalUnreadBadge: {
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  totalUnreadText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   sectionTitle: {
     fontSize: 18,
@@ -266,19 +342,59 @@ const styles = StyleSheet.create({
     borderColor: '#eee',
     backgroundColor: '#fff',
   },
+  avatarContainer: {
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  notificationText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   threadName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
+  },
+  unreadThreadName: {
+    fontWeight: 'bold',
+    color: '#000',
   },
   lastMessage: {
     fontSize: 14,
     color: '#666',
     marginTop: 2,
   },
+  unreadLastMessage: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  timestampContainer: {
+    alignItems: 'flex-end',
+  },
   timestamp: {
     fontSize: 12,
     color: '#999',
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#007AFF',
+    marginTop: 4,
   },
   partnerItem: {
     flexDirection: 'row',
