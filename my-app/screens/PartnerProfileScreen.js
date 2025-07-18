@@ -42,16 +42,25 @@ const PartnerProfileScreen = ({ route, navigation }) => {
             <TouchableOpacity
               onPress={async () => {
                 const currentUser = auth.currentUser;
-                const partnerId = partnerData?.id || partnerData?.partnerId;
+                const partnerId = partnerData?.partnerId ?? partnerData?.id;
                 if (!currentUser || !partnerId) return;
 
                 try {
                   const chatId = await getOrCreateChat(currentUser.uid, partnerId);
 
-                  navigation.navigate('Chat', {
-                    chatId,
-                    partner,
+                  navigation.navigate('MainTabs', {
+                    screen: 'Chat',
+                    params: {
+                      screen: 'ChatThread',
+                      params: {
+                        thread: {
+                          id: chatId,
+                          name: partner.partnerName,
+                        },
+                      },
+                    },
                   });
+
                   
                 } catch (error) {
                   console.error('Failed to start chat:', error);
