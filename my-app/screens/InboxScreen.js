@@ -10,7 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../firebaseConfig';
 import { db } from '../firebaseConfig';
-import { collection, query, where, onSnapshot, getDocs, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 
 const InboxScreen = () => {
@@ -27,8 +27,8 @@ const InboxScreen = () => {
           const otherUid = data.participants.find((id) => id !== auth.currentUser.uid);
 
           // get partner name
-          const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', otherUid)));
-          const userName = userSnap.empty ? 'Unknown' : userSnap.docs[0].data().name;
+          const userDoc = await getDoc(doc(db, 'users', otherUid));
+          const userName = userDoc.exists() ? userDoc.data().name : 'Unknown';
 
           // Get newst message
           const msgQuery = query(
