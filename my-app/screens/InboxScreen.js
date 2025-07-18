@@ -19,18 +19,22 @@ const InboxScreen = () => {
   const navigation = useNavigation();
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      query(collection(db, 'chats'), where('participants', 'array-contains', auth.currentUser.uid)),
-      async (snap) => {
+  if (!auth.currentUser?.uid) {
+    setLoading(false);
+    return;
+  }
+
+  const unsubscribe = onSnapshot(
+    query(collection(db, 'chats'), where('participants', 'array-contains', auth.currentUser.uid)),
+    (snap) => {
+      const fetchThreads = async () => {
         const promises = snap.docs.map(async (doc) => {
           const data = doc.data();
           const otherUid = data.participants.find((id) => id !== auth.currentUser.uid);
 
-          // get partner name
           const userDoc = await getDoc(doc(db, 'users', otherUid));
           const userName = userDoc.exists() ? userDoc.data().name : 'Unknown';
 
-          // Get newst message
           const msgQuery = query(
             collection(db, 'chats', doc.id, 'messages'),
             orderBy('sentAt', 'desc'),
@@ -44,19 +48,22 @@ const InboxScreen = () => {
             name: userName,
             lastMessage: lastMsg?.text ?? '',
             timestamp: lastMsg?.sentAt?.toDate()?.toLocaleTimeString() ?? '',
-            course: data.sharedCourses?.[0] ?? '',
-            messages: [], // placeholder
           };
         });
 
         const result = await Promise.all(promises);
         setThreads(result);
         setLoading(false);
-      }
-    );
+      };
 
-    return () => unsubscribe();
-  }, []);
+      fetchThreads();
+    }
+  );
+
+  return () => unsubscribe();
+}, [auth.currentUser?.uid]);
+
+
 
   const renderItem = ({ item }) => (
     <TouchableOpacity
@@ -71,6 +78,14 @@ const InboxScreen = () => {
       <Text style={{ fontSize: 12, color: '#999' }}>{item.timestamp}</Text>
     </TouchableOpacity>
   );
+
+  if (!auth.currentUser?.uid) {
+  return (
+    <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Text style={{ fontSize: 16, color: '#999' }}>No user signed in.</Text>
+    </SafeAreaView>
+  );
+}
 
   if (loading) return <ActivityIndicator style={{ marginTop: 40 }} />;
 

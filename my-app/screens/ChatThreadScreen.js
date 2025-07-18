@@ -74,7 +74,7 @@ const ChatThreadScreen = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10 }}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => navigation.navigate('Inbox')}>
             <Ionicons name="chevron-back" size={24} color="#007AFF" />
           </TouchableOpacity>
           <Text style={{ fontSize: 20, fontWeight: '600', marginLeft: 10 }}>{thread.name}</Text>
