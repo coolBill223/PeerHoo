@@ -8,9 +8,12 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { auth } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
+import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
 
 const avatarOptions = [
   'school',
@@ -35,26 +38,132 @@ const ProfileScreen = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [studyTimes, setStudyTimes] = useState(['Evenings', 'Weekends']);
   const [meetingPreference, setMeetingPreference] = useState('In-person & Virtual');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      setName(user.displayName || 'Your Name');
-      setEmail(user.email || 'your.email@virginia.edu');
-      if (user.email) {
-        const computingId = user.email.split('@')[0];
-        setComputingID(computingId);
-      }
-    }
+    loadUserProfile();
   }, []);
 
-  const handleSaveProfile = () => {
-    // Here you would save to Firebase Firestore
-    Alert.alert(
-      'Profile Updated',
-      'Your profile has been saved successfully!',
-      [{ text: 'OK', onPress: () => setIsEditing(false) }]
-    );
+  const loadUserProfile = async () => {
+    try {
+      setLoading(true);
+      
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert('Error', 'No authenticated user found');
+        return;
+      }
+
+      // Try to get from Firestore
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        
+        setName(userData.name || user.displayName || 'Your Name');
+        setEmail(userData.email || user.email || 'your.email@virginia.edu');
+        setComputingID(userData.computingId || (user.email ? user.email.split('@')[0] : 'unknown'));
+        setBio(userData.bio || '');
+        setCourses(userData.courses || []);
+        setStudyTimes(userData.studyTimes || ['Evenings', 'Weekends']);
+        setMeetingPreference(userData.meetingPreference || 'In-person & Virtual');
+        setSelectedAvatar(userData.selectedAvatar || 'person-circle');
+      } else {
+        // Use auth data and create document
+        const userData = {
+          name: user.displayName || 'Your Name',
+          email: user.email || 'your.email@virginia.edu',
+          computingId: user.email ? user.email.split('@')[0] : 'unknown',
+          bio: '',
+          courses: [],
+          studyTimes: ['Evenings', 'Weekends'],
+          meetingPreference: 'In-person & Virtual',
+          selectedAvatar: 'person-circle',
+          createdAt: serverTimestamp(),
+        };
+        
+        // Create the document
+        await setDoc(userDocRef, userData);
+        
+        setName(userData.name);
+        setEmail(userData.email);
+        setComputingID(userData.computingId);
+        setBio(userData.bio);
+        setCourses(userData.courses);
+        setStudyTimes(userData.studyTimes);
+        setMeetingPreference(userData.meetingPreference);
+        setSelectedAvatar(userData.selectedAvatar);
+      }
+      
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      Alert.alert('Error', `Failed to load profile: ${error.message}`);
+      
+      // Fallback to auth data
+      const user = auth.currentUser;
+      if (user) {
+        setName(user.displayName || 'Your Name');
+        setEmail(user.email || 'your.email@virginia.edu');
+        if (user.email) {
+          const computingId = user.email.split('@')[0];
+          setComputingID(computingId);
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      setSaving(true);
+      
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert('Error', 'No authenticated user found');
+        return false;
+      }
+
+      // Validate required fields
+      if (!name.trim()) {
+        Alert.alert('Error', 'Name is required');
+        return false;
+      }
+
+      // Update Firestore document
+      const userDocRef = doc(db, 'users', user.uid);
+      const updateData = {
+        name: name.trim(),
+        bio: bio.trim(),
+        courses,
+        studyTimes,
+        meetingPreference,
+        selectedAvatar,
+        lastUpdated: serverTimestamp(),
+      };
+
+      await updateDoc(userDocRef, updateData);
+
+      // Update Firebase Auth displayName if name changed
+      if (name.trim() !== user.displayName) {
+        try {
+          await updateProfile(user, { displayName: name.trim() });
+        } catch (authError) {
+          console.warn('Failed to update Firebase Auth displayName:', authError);
+        }
+      }
+
+      return true;
+      
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      Alert.alert('Error', `Failed to save profile: ${error.message}`);
+      return false;
+    } finally {
+      setSaving(false);
+    }
   };
   
   const handleAddCourse = () => {
@@ -71,6 +180,17 @@ const ProfileScreen = () => {
   const studyTimeOptions = ['Mornings', 'Evenings', 'Nights', 'Weekdays', 'Weekends'];
   const meetingOptions = ['In-person', 'Virtual', 'Both'];
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollView}>
@@ -79,7 +199,19 @@ const ProfileScreen = () => {
           <Text style={styles.title}>My Profile</Text>
           <TouchableOpacity 
             style={styles.editButton}
-            onPress={() => setIsEditing(!isEditing)}
+            onPress={async () => {
+              if (isEditing) {
+                // Save profile when clicking checkmark
+                const success = await handleSaveProfile();
+                if (success) {
+                  setIsEditing(false);
+                }
+              } else {
+                // Enter edit mode
+                setIsEditing(true);
+              }
+            }}
+            disabled={saving}
           >
             <Ionicons 
               name={isEditing ? "checkmark" : "pencil"} 
@@ -126,6 +258,7 @@ const ProfileScreen = () => {
               placeholder="Enter your name"
               value={name}
               onChangeText={setName}
+              editable={!saving}
             />
           ) : (
             <View style={styles.displayField}>
@@ -145,6 +278,7 @@ const ProfileScreen = () => {
               numberOfLines={4}
               value={bio}
               onChangeText={setBio}
+              editable={!saving}
             />
           ) : (
             <View style={[styles.displayField, styles.bioDisplay]}>
@@ -188,6 +322,7 @@ const ProfileScreen = () => {
                 <TouchableOpacity 
                   onPress={() => handleRemoveCourse(course)}
                   style={styles.removeCourseButton}
+                  disabled={saving}
                 >
                   <Ionicons name="close" size={16} color="#FF3B30" />
                 </TouchableOpacity>
@@ -204,10 +339,12 @@ const ProfileScreen = () => {
                   value={newCourse}
                   onChangeText={setNewCourse}
                   autoCapitalize="characters"
+                  editable={!saving}
                 />
                 <TouchableOpacity 
                   style={styles.addCourseButton}
                   onPress={handleAddCourse}
+                  disabled={saving}
                 >
                   <Ionicons name="add" size={20} color="#007AFF" />
                 </TouchableOpacity>
@@ -218,98 +355,123 @@ const ProfileScreen = () => {
 
         {/* Study Preferences */}
         <View style={styles.section}>
-  <Text style={styles.sectionLabel}>Study Preferences</Text>
-  <View style={styles.preferencesContainer}>
-    
-    {/* Preferred Study Time */}
-    <View style={styles.preferenceItem}>
-      <Ionicons name="time" size={20} color="#FF9500" />
-      <View style={styles.preferenceText}>
-        <Text style={styles.preferenceLabel}>Preferred Study Time</Text>
-        {isEditing ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
-            {studyTimeOptions.map(option => {
-              const isSelected = studyTimes.includes(option);
-              return (
-                <TouchableOpacity
-                  key={option}
-                  style={[
-                    styles.optionButton,
-                    isSelected && styles.optionSelected,
-                  ]}
-                  onPress={() => {
-                    if (isSelected) {
-                      setStudyTimes(prev => prev.filter(t => t !== option));
-                    } else {
-                      setStudyTimes(prev => [...prev, option]);
-                    }
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      isSelected && styles.optionTextSelected,
-                    ]}
-                  >
-                    {option}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ) : (
-          <Text style={styles.preferenceValue}>
-            {studyTimes.length > 0 ? studyTimes.join(', ') : 'None selected'}
-          </Text>
-        )}
-      </View>
-    </View>
-
-          {/* Meeting Preference */}
-          <View style={styles.preferenceItem}>
-            <Ionicons name="location" size={20} color="#34C759" />
-            <View style={styles.preferenceText}>
-              <Text style={styles.preferenceLabel}>Meeting Preference</Text>
-              {isEditing ? (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
-                  {meetingOptions.map(option => {
-                    const isSelected = meetingPreference === option;
-                    return (
-                      <TouchableOpacity
-                        key={option}
-                        style={[
-                          styles.optionButton,
-                          isSelected && styles.optionSelected,
-                        ]}
-                        onPress={() => setMeetingPreference(option)}
-                      >
-                        <Text
+          <Text style={styles.sectionLabel}>Study Preferences</Text>
+          <View style={styles.preferencesContainer}>
+            
+            {/* Preferred Study Time */}
+            <View style={styles.preferenceItem}>
+              <Ionicons name="time" size={20} color="#FF9500" />
+              <View style={styles.preferenceText}>
+                <Text style={styles.preferenceLabel}>Preferred Study Time</Text>
+                {isEditing ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+                    {studyTimeOptions.map(option => {
+                      const isSelected = studyTimes.includes(option);
+                      return (
+                        <TouchableOpacity
+                          key={option}
                           style={[
-                            styles.optionText,
-                            isSelected && styles.optionTextSelected,
+                            styles.optionButton,
+                            isSelected && styles.optionSelected,
                           ]}
+                          onPress={() => {
+                            if (saving) return;
+                            if (isSelected) {
+                              setStudyTimes(prev => prev.filter(t => t !== option));
+                            } else {
+                              setStudyTimes(prev => [...prev, option]);
+                            }
+                          }}
+                          disabled={saving}
                         >
-                          {option}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              ) : (
-                <Text style={styles.preferenceValue}>{meetingPreference}</Text>
-              )}
+                          <Text
+                            style={[
+                              styles.optionText,
+                              isSelected && styles.optionTextSelected,
+                            ]}
+                          >
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={styles.preferenceValue}>
+                    {studyTimes.length > 0 ? studyTimes.join(', ') : 'None selected'}
+                  </Text>
+                )}
+              </View>
             </View>
-          </View>
 
+            {/* Meeting Preference */}
+            <View style={styles.preferenceItem}>
+              <Ionicons name="location" size={20} color="#34C759" />
+              <View style={styles.preferenceText}>
+                <Text style={styles.preferenceLabel}>Meeting Preference</Text>
+                {isEditing ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+                    {meetingOptions.map(option => {
+                      const isSelected = meetingPreference === option;
+                      return (
+                        <TouchableOpacity
+                          key={option}
+                          style={[
+                            styles.optionButton,
+                            isSelected && styles.optionSelected,
+                          ]}
+                          onPress={() => {
+                            if (saving) return;
+                            setMeetingPreference(option);
+                          }}
+                          disabled={saving}
+                        >
+                          <Text
+                            style={[
+                              styles.optionText,
+                              isSelected && styles.optionTextSelected,
+                            ]}
+                          >
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={styles.preferenceValue}>{meetingPreference}</Text>
+                )}
+              </View>
+            </View>
+
+          </View>
         </View>
-      </View>
 
         {/* Save Button */}
         {isEditing && (
           <View style={styles.section}>
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
-              <Ionicons name="save-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-              <Text style={styles.saveText}>Save Profile</Text>
+            <TouchableOpacity 
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]} 
+              onPress={async () => {
+                const success = await handleSaveProfile();
+                if (success) {
+                  Alert.alert(
+                    'Success!',
+                    'Your profile has been updated successfully!',
+                    [{ text: 'OK', onPress: () => setIsEditing(false) }]
+                  );
+                }
+              }}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+              ) : (
+                <Ionicons name="save-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+              )}
+              <Text style={styles.saveText}>
+                {saving ? 'Saving...' : 'Save Profile'}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -320,17 +482,17 @@ const ProfileScreen = () => {
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
               <Ionicons name="people" size={24} color="#007AFF" />
-              <Text style={styles.statNumber}>3</Text>
+              <Text style={styles.statNumber}>0</Text>
               <Text style={styles.statLabel}>Study Partners</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="document-text" size={24} color="#34C759" />
-              <Text style={styles.statNumber}>12</Text>
+              <Text style={styles.statNumber}>0</Text>
               <Text style={styles.statLabel}>Notes Shared</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="star" size={24} color="#FF9500" />
-              <Text style={styles.statNumber}>4.8</Text>
+              <Text style={styles.statNumber}>0</Text>
               <Text style={styles.statLabel}>Rating</Text>
             </View>
           </View>
@@ -344,6 +506,16 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     backgroundColor: '#f8f9fa' 
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 12,
   },
   scrollView: { 
     paddingBottom: 40 
@@ -572,6 +744,9 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#999',
   },
   saveText: {
     color: '#fff',

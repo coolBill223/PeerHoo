@@ -4,11 +4,13 @@ import {
   doc,
   getDoc,
   setDoc,
+  updateDoc,
   serverTimestamp,
   query,
   where,
   getDocs,
 } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
 
 /**
  * Get user info by UID with enhanced name resolution
@@ -91,6 +93,91 @@ export const getUserInfo = async (uid) => {
       email: `${uid.slice(0, 8)}@virginia.edu`,
       isPlaceholder: true,
     };
+  }
+};
+
+/**
+ * Get current user's profile data
+ */
+export const getCurrentUserProfile = async () => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('No authenticated user found');
+    }
+
+    const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+    if (userDoc.exists()) {
+      return { id: currentUser.uid, ...userDoc.data() };
+    }
+
+    // If no document exists, create one from auth data
+    const userData = {
+      name: currentUser.displayName || 'Your Name',
+      email: currentUser.email || 'your.email@virginia.edu',
+      computingId: currentUser.email ? currentUser.email.split('@')[0] : 'unknown',
+      bio: '',
+      courses: [],
+      studyTimes: ['Evenings', 'Weekends'],
+      meetingPreference: 'In-person & Virtual',
+      selectedAvatar: 'person-circle',
+      createdAt: serverTimestamp(),
+    };
+
+    await setDoc(doc(db, 'users', currentUser.uid), userData);
+    return { id: currentUser.uid, ...userData };
+    
+  } catch (error) {
+    console.error('Error getting current user profile:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update user profile
+ */
+export const updateUserProfile = async (profileData) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('No authenticated user found');
+    }
+
+    const { name, bio, courses, studyTimes, meetingPreference, selectedAvatar } = profileData;
+
+    // Prepare update data
+    const updateData = {
+      lastUpdated: serverTimestamp(),
+    };
+
+    // Only update fields that are provided
+    if (name !== undefined) updateData.name = name;
+    if (bio !== undefined) updateData.bio = bio;
+    if (courses !== undefined) updateData.courses = courses;
+    if (studyTimes !== undefined) updateData.studyTimes = studyTimes;
+    if (meetingPreference !== undefined) updateData.meetingPreference = meetingPreference;
+    if (selectedAvatar !== undefined) updateData.selectedAvatar = selectedAvatar;
+
+    // Update Firestore document
+    await updateDoc(doc(db, 'users', currentUser.uid), updateData);
+    console.log('Updated user profile in Firestore:', updateData);
+
+    // Update Firebase Auth displayName if name is being changed
+    if (name !== undefined && name !== currentUser.displayName) {
+      try {
+        await updateProfile(currentUser, { displayName: name });
+        console.log('Updated Firebase Auth displayName:', name);
+      } catch (authError) {
+        console.warn('Failed to update Firebase Auth displayName:', authError);
+        // Don't throw error here as Firestore update was successful
+      }
+    }
+
+    return { success: true, message: 'Profile updated successfully!' };
+    
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    throw new Error(`Failed to update profile: ${error.message}`);
   }
 };
 
@@ -263,6 +350,11 @@ export const ensureUserDocument = async () => {
       name: currentUser.displayName || 'Unknown User',
       email: currentUser.email || 'Unknown Email',
       computingId: currentUser.email ? currentUser.email.split('@')[0] : 'unknown',
+      bio: '',
+      courses: [],
+      studyTimes: ['Evenings', 'Weekends'],
+      meetingPreference: 'In-person & Virtual',
+      selectedAvatar: 'person-circle',
       createdAt: serverTimestamp(),
     };
 

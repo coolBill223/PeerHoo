@@ -13,11 +13,12 @@ import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebaseConfig';
 import { getAcceptedPartners } from '../backend/partnerService';
 import { ensureUserDocument } from '../backend/userService';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getUnreadCount } from '../backend/chatService';
 
 const HomeScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [partners, setPartners] = useState([]);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
 
@@ -30,10 +31,12 @@ const HomeScreen = ({ navigation }) => {
         // Ensure user document exists in Firestore
         await ensureUserDocument();
         
+        // Load user profile data
+        await loadUserProfile(current.uid);
+        
         // fetch all documents where status === 'accepted'
         try {
           const partnersData = await getAcceptedPartners(current.uid);
-          console.log('Partners data:', partnersData);
           setPartners(partnersData);
           
           // Load unread message count
@@ -46,6 +49,30 @@ const HomeScreen = ({ navigation }) => {
 
     initializeUser();
   }, []);
+
+  // Load user profile data from Firestore
+  const loadUserProfile = async (uid) => {
+    try {
+      const userDocRef = doc(db, 'users', uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        setUserProfile(userData);
+      } else {
+        // Fallback to auth data
+        const current = auth.currentUser;
+        if (current) {
+          setUserProfile({
+            name: current.displayName || 'User',
+            email: current.email || 'unknown@email.com'
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
 
   // Function to load total unread message count
   const loadUnreadMessageCount = async (userId) => {
@@ -71,7 +98,6 @@ const HomeScreen = ({ navigation }) => {
       const unreadCounts = await Promise.all(unreadPromises);
       const totalUnread = unreadCounts.reduce((sum, count) => sum + count, 0);
       
-      console.log('Total unread messages:', totalUnread);
       setTotalUnreadMessages(totalUnread);
     } catch (error) {
       console.error('Error loading unread message count:', error);
@@ -84,31 +110,26 @@ const HomeScreen = ({ navigation }) => {
     const current = auth.currentUser;
     if (current) {
       try {
-        console.log('Reloading partners...');
-        
         const partnersData = await getAcceptedPartners(current.uid);
-        console.log('Reloaded partners data:', partnersData);
         
         // Only update state if we actually got data
         if (partnersData && Array.isArray(partnersData)) {
           setPartners(partnersData);
-        } else {
-          console.log('No partners data received, keeping current state');
         }
         
         // Reload unread count
         await loadUnreadMessageCount(current.uid);
       } catch (error) {
         console.error('Error reloading partners:', error);
-        // Don't clear partners on error, just log it
       }
     }
   };
 
-  // Reload unread count when screen comes into focus
+  // Reload user profile and unread count when screen comes into focus
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       if (auth.currentUser?.uid) {
+        loadUserProfile(auth.currentUser.uid);
         loadUnreadMessageCount(auth.currentUser.uid);
       }
     });
@@ -177,11 +198,20 @@ const HomeScreen = ({ navigation }) => {
     { type: 'message', title: 'Message from Alex about project', time: '2 days ago' },
   ];
 
-  // Helper function to get the first name safely
+  // Helper function to get the first name safely from profile data
   const getFirstName = () => {
-    if (user?.displayName && typeof user.displayName === 'string' && user.displayName.trim()) {
-      return `, ${user.displayName.split(' ')[0]}`;
+    // First try to get from loaded profile
+    if (userProfile?.name && typeof userProfile.name === 'string' && userProfile.name.trim()) {
+      const firstName = userProfile.name.split(' ')[0];
+      return `, ${firstName}`;
     }
+    
+    // Fallback to auth data
+    if (user?.displayName && typeof user.displayName === 'string' && user.displayName.trim()) {
+      const firstName = user.displayName.split(' ')[0];
+      return `, ${firstName}`;
+    }
+    
     return '';
   };
 
@@ -469,7 +499,6 @@ const styles = StyleSheet.create({
     elevation: 2,
     alignItems: 'center',
   },
-
   activityContainer: {
     backgroundColor: '#fff',
     borderRadius: 12,
