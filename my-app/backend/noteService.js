@@ -5,7 +5,6 @@ import {
   getDocs,
   query,
   where,
-  orderBy,
   deleteDoc,
   doc,
   getDoc,
@@ -34,29 +33,45 @@ export const uploadMediaNote = async ({ uid, title, course, mediaURL }) => {
 };
 
 /**
- * get notes by course
+ * get notes by course - FIXED: Removed orderBy to avoid index requirement
  */
 export const getNotesByCourse = async (course) => {
   const q = query(
     collection(db, 'notes'),
-    where('course', '==', course),
-    orderBy('createdAt', 'desc')
+    where('course', '==', course)
+    // Removed orderBy - we'll sort in JavaScript instead
   );
   const snap = await getDocs(q);
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const notes = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+  // Sort in JavaScript instead of Firestore
+  return notes.sort((a, b) => {
+    if (!a.createdAt && !b.createdAt) return 0;
+    if (!a.createdAt) return 1;
+    if (!b.createdAt) return -1;
+    return b.createdAt.toMillis() - a.createdAt.toMillis();
+  });
 };
 
 /**
- * get notes by specific user
+ * get notes by specific user - FIXED: Removed orderBy to avoid index requirement
  */
 export const getNotesByUser = async (uid) => {
   const q = query(
     collection(db, 'notes'),
-    where('authorId', '==', uid),
-    orderBy('createdAt', 'desc')
+    where('authorId', '==', uid)
+    // Removed orderBy - we'll sort in JavaScript instead
   );
   const snap = await getDocs(q);
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const notes = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+  // Sort in JavaScript instead of Firestore
+  return notes.sort((a, b) => {
+    if (!a.createdAt && !b.createdAt) return 0;
+    if (!a.createdAt) return 1;
+    if (!b.createdAt) return -1;
+    return b.createdAt.toMillis() - a.createdAt.toMillis();
+  });
 };
 
 /**
@@ -64,9 +79,17 @@ export const getNotesByUser = async (uid) => {
  */
 export const searchNotesByTitle = async (keyword) => {
   const snap = await getDocs(collection(db, 'notes'));
-  return snap.docs
+  const notes = snap.docs
     .map(doc => ({ id: doc.id, ...doc.data() }))
     .filter(note => note.title?.toLowerCase().includes(keyword.toLowerCase()));
+  
+  // Sort search results too
+  return notes.sort((a, b) => {
+    if (!a.createdAt && !b.createdAt) return 0;
+    if (!a.createdAt) return 1;
+    if (!b.createdAt) return -1;
+    return b.createdAt.toMillis() - a.createdAt.toMillis();
+  });
 };
 
 /**

@@ -13,6 +13,8 @@ import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebaseConfig';
 import { getAcceptedPartners } from '../backend/partnerService';
 import { ensureUserDocument } from '../backend/userService';
+import { getNotesByUser } from '../backend/noteService'; // Import notes service
+import { getUserInfo } from '../backend/userService'; // Import user service
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getUnreadCount } from '../backend/chatService';
 
@@ -21,6 +23,7 @@ const HomeScreen = ({ navigation }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [partners, setPartners] = useState([]);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
+  const [userNotes, setUserNotes] = useState([]); // Add state for user's notes
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -39,10 +42,13 @@ const HomeScreen = ({ navigation }) => {
           const partnersData = await getAcceptedPartners(current.uid);
           setPartners(partnersData);
           
+          // Load user's notes
+          await loadUserNotes(current.uid);
+          
           // Load unread message count
           await loadUnreadMessageCount(current.uid);
         } catch (error) {
-          console.error('Error fetching partners:', error);
+          console.error('Error fetching data:', error);
         }
       }
     };
@@ -71,6 +77,40 @@ const HomeScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
+    }
+  };
+
+  // Load user's notes
+  const loadUserNotes = async (uid) => {
+    try {
+      const notes = await getNotesByUser(uid);
+      
+      // Fetch author information for each note (even though they're all from the current user)
+      const notesWithAuthors = await Promise.all(
+        notes.map(async (note) => {
+          try {
+            const authorInfo = await getUserInfo(note.authorId);
+            return {
+              ...note,
+              authorName: authorInfo?.name || 'You',
+              authorComputingId: authorInfo?.computingId || note.authorId.slice(0, 8)
+            };
+          } catch (error) {
+            console.error('Error fetching author info:', error);
+            return {
+              ...note,
+              authorName: 'You',
+              authorComputingId: note.authorId.slice(0, 8)
+            };
+          }
+        })
+      );
+      
+      setUserNotes(notesWithAuthors);
+    } catch (error) {
+      console.error('Error loading user notes:', error);
+      // Don't show alert for notes loading error on home screen
+      setUserNotes([]);
     }
   };
 
@@ -117,20 +157,22 @@ const HomeScreen = ({ navigation }) => {
           setPartners(partnersData);
         }
         
-        // Reload unread count
+        // Reload unread count and notes
         await loadUnreadMessageCount(current.uid);
+        await loadUserNotes(current.uid);
       } catch (error) {
-        console.error('Error reloading partners:', error);
+        console.error('Error reloading data:', error);
       }
     }
   };
 
-  // Reload user profile and unread count when screen comes into focus
+  // Reload user profile, unread count, and notes when screen comes into focus
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       if (auth.currentUser?.uid) {
         loadUserProfile(auth.currentUser.uid);
         loadUnreadMessageCount(auth.currentUser.uid);
+        loadUserNotes(auth.currentUser.uid);
       }
     });
 
@@ -157,6 +199,12 @@ const HomeScreen = ({ navigation }) => {
         },
       ]
     );
+  };
+
+  // Get unique courses from user's notes
+  const getUserCourses = () => {
+    const courses = new Set(userNotes.map(note => note.course));
+    return courses.size;
   };
 
   const quickActions = [
@@ -192,11 +240,57 @@ const HomeScreen = ({ navigation }) => {
     },
   ];
 
-  const recentActivity = [
-    { type: 'note', title: 'CS 4720 Lecture Notes uploaded', time: '2 hours ago' },
-    { type: 'match', title: 'New study partner match!', time: '1 day ago' },
-    { type: 'message', title: 'Message from Alex about project', time: '2 days ago' },
-  ];
+  // Generate recent activity from actual data
+  const getRecentActivity = () => {
+    const activities = [];
+    
+    // Add recent notes
+    const recentNotes = userNotes.slice(0, 2);
+    recentNotes.forEach(note => {
+      const timeAgo = note.createdAt ? getTimeAgo(note.createdAt.toDate()) : 'Recently';
+      activities.push({
+        type: 'note',
+        title: `${note.course} - ${note.title} uploaded`,
+        time: timeAgo
+      });
+    });
+    
+    // Add recent partners
+    const recentPartners = partners.slice(0, 1);
+    recentPartners.forEach(partner => {
+      activities.push({
+        type: 'match',
+        title: `New study partner: ${partner.partnerName}`,
+        time: '1 day ago'
+      });
+    });
+    
+    // Add placeholder message activity if there are partners
+    if (partners.length > 0) {
+      activities.push({
+        type: 'message',
+        title: `Message from ${partners[0].partnerName}`,
+        time: '2 days ago'
+      });
+    }
+    
+    return activities.slice(0, 3); // Limit to 3 activities
+  };
+
+  // Helper function to calculate time ago
+  const getTimeAgo = (date) => {
+    const now = new Date();
+    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours} hours ago`;
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays === 1) return '1 day ago';
+    if (diffInDays < 7) return `${diffInDays} days ago`;
+    
+    return date.toLocaleDateString();
+  };
 
   // Helper function to get the first name safely from profile data
   const getFirstName = () => {
@@ -214,6 +308,8 @@ const HomeScreen = ({ navigation }) => {
     
     return '';
   };
+
+  const recentActivity = getRecentActivity();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -240,12 +336,12 @@ const HomeScreen = ({ navigation }) => {
           </View>
           <View style={styles.statCard}>
             <Ionicons name="document-text" size={24} color="#34C759" />
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>{userNotes.length}</Text>
             <Text style={styles.statLabel}>Notes Shared</Text>
           </View>
           <View style={styles.statCard}>
             <Ionicons name="school" size={24} color="#5856D6" />
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>{getUserCourses()}</Text>
             <Text style={styles.statLabel}>Courses</Text>
           </View>
         </View>
