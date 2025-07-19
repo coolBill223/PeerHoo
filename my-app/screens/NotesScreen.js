@@ -21,13 +21,15 @@ import {
   deleteNote 
 } from '../backend/noteService';
 import { getUserInfo } from '../backend/userService';
+import { getMyMatchRequests } from '../backend/matchService';
 
 const NotesScreen = () => {
   const [view, setView] = useState('browse'); // 'browse', 'detail', 'upload'
   const [selectedNote, setSelectedNote] = useState(null);
-  const [selectedCourse, setSelectedCourse] = useState('CS 2100');
+  const [selectedCourse, setSelectedCourse] = useState('');
   const [notes, setNotes] = useState({});
   const [loading, setLoading] = useState(false);
+  const [userCourses, setUserCourses] = useState([]); // User's actual courses
   
   // Upload form state
   const [uploadTitle, setUploadTitle] = useState('');
@@ -37,8 +39,38 @@ const NotesScreen = () => {
   const courses = ['CS 2100', 'MATH 3100', 'PSYC 2500', 'CS 1010', 'CS 3240'];
 
   useEffect(() => {
-    loadNotesForCourse(selectedCourse);
+    loadUserCourses();
+  }, []);
+
+  useEffect(() => {
+    if (selectedCourse) {
+      loadNotesForCourse(selectedCourse);
+    }
   }, [selectedCourse]);
+
+  // Load user's courses from match requests
+  const loadUserCourses = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const matchRequests = await getMyMatchRequests(user.uid);
+      const userCoursesList = matchRequests
+        .filter((m) => m.senderId === user.uid)
+        .map((m) => m.course);
+      
+      const uniqueCourses = [...new Set(userCoursesList)];
+      setUserCourses(uniqueCourses);
+      
+      // Set the first course as selected if available
+      if (uniqueCourses.length > 0 && !selectedCourse) {
+        setSelectedCourse(uniqueCourses[0]);
+      }
+    } catch (error) {
+      console.error('Error loading user courses:', error);
+      setUserCourses([]);
+    }
+  };
 
   // Load notes for a specific course
   const loadNotesForCourse = async (course) => {
@@ -210,8 +242,9 @@ const NotesScreen = () => {
       setUploadCourse('');
       setSelectedFile(null);
       
-      // Reload notes for the course
+      // Reload notes for the course and refresh user courses
       await loadNotesForCourse(uploadCourse.trim());
+      await loadUserCourses();
       
       setView('browse');
     } catch (error) {
@@ -297,30 +330,51 @@ const NotesScreen = () => {
 
       <View style={styles.courseSelector}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {courses.map((course) => (
-            <TouchableOpacity
-              key={course}
-              style={[
-                styles.courseButton,
-                selectedCourse === course && styles.courseButtonActive,
-              ]}
-              onPress={() => setSelectedCourse(course)}
-            >
-              <Text
+          {userCourses.length > 0 ? (
+            userCourses.map((course) => (
+              <TouchableOpacity
+                key={course}
                 style={[
-                  styles.courseButtonText,
-                  selectedCourse === course && styles.courseButtonTextActive,
+                  styles.courseButton,
+                  selectedCourse === course && styles.courseButtonActive,
                 ]}
+                onPress={() => setSelectedCourse(course)}
               >
-                {course}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[
+                    styles.courseButtonText,
+                    selectedCourse === course && styles.courseButtonTextActive,
+                  ]}
+                >
+                  {course}
+                </Text>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={styles.noCoursesContainer}>
+              <Text style={styles.noCoursesText}>No courses added yet</Text>
+              <Text style={styles.noCoursesSubtext}>Add courses in the Find Partners section first</Text>
+            </View>
+          )}
         </ScrollView>
       </View>
 
       <View style={styles.section}>
-        {loading ? (
+        {userCourses.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="school-outline" size={48} color="#999" />
+            <Text style={styles.placeholderText}>No courses added yet</Text>
+            <Text style={styles.placeholderSubtext}>
+              Add courses in the Find Partners section to start browsing and sharing notes!
+            </Text>
+          </View>
+        ) : !selectedCourse ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="document-outline" size={48} color="#999" />
+            <Text style={styles.placeholderText}>Select a course above</Text>
+            <Text style={styles.placeholderSubtext}>Choose a course to view notes</Text>
+          </View>
+        ) : loading ? (
           <Text style={styles.loadingText}>Loading notes...</Text>
         ) : notes[selectedCourse]?.length ? (
           notes[selectedCourse].map((note) => (
@@ -419,12 +473,32 @@ const NotesScreen = () => {
           />
 
           <Text style={styles.detailLabel}>Course *</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="e.g., CS 2100"
-            value={uploadCourse}
-            onChangeText={setUploadCourse}
-          />
+          <View style={styles.courseDropdownContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.courseDropdown}>
+              {userCourses.map((course) => (
+                <TouchableOpacity
+                  key={course}
+                  style={[
+                    styles.courseDropdownItem,
+                    uploadCourse === course && styles.courseDropdownItemActive,
+                  ]}
+                  onPress={() => setUploadCourse(course)}
+                >
+                  <Text
+                    style={[
+                      styles.courseDropdownText,
+                      uploadCourse === course && styles.courseDropdownTextActive,
+                    ]}
+                  >
+                    {course}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            {uploadCourse && (
+              <Text style={styles.selectedCourseText}>Selected: {uploadCourse}</Text>
+            )}
+          </View>
 
           {selectedFile && (
             <View style={styles.selectedFileContainer}>
@@ -632,6 +706,59 @@ const styles = StyleSheet.create({
     backgroundColor: '#999',
   },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  
+  // Course dropdown styles
+  courseDropdownContainer: {
+    marginBottom: 8,
+  },
+  courseDropdown: {
+    marginBottom: 8,
+  },
+  courseDropdownItem: {
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  courseDropdownItemActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  courseDropdownText: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  courseDropdownTextActive: {
+    color: '#fff',
+  },
+  selectedCourseText: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  
+  // No courses styles
+  noCoursesContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  noCoursesText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#666',
+    textAlign: 'center',
+  },
+  noCoursesSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginTop: 4,
+  },
 });
 
 export default NotesScreen;

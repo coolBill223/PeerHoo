@@ -15,6 +15,7 @@ import { getAcceptedPartners } from '../backend/partnerService';
 import { ensureUserDocument } from '../backend/userService';
 import { getNotesByUser } from '../backend/noteService'; // Import notes service
 import { getUserInfo } from '../backend/userService'; // Import user service
+import { getMyMatchRequests } from '../backend/matchService'; // Import match service
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getUnreadCount } from '../backend/chatService';
 
@@ -24,6 +25,7 @@ const HomeScreen = ({ navigation }) => {
   const [partners, setPartners] = useState([]);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
   const [userNotes, setUserNotes] = useState([]); // Add state for user's notes
+  const [userCourseCount, setUserCourseCount] = useState(0); // Add state for course count
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -45,6 +47,9 @@ const HomeScreen = ({ navigation }) => {
           // Load user's notes
           await loadUserNotes(current.uid);
           
+          // Load user's course count
+          await loadUserCourseCount(current.uid);
+          
           // Load unread message count
           await loadUnreadMessageCount(current.uid);
         } catch (error) {
@@ -52,6 +57,22 @@ const HomeScreen = ({ navigation }) => {
         }
       }
     };
+
+  // Load user's course count from match requests
+  const loadUserCourseCount = async (uid) => {
+    try {
+      const matchRequests = await getMyMatchRequests(uid);
+      const userCourses = matchRequests
+        .filter((m) => m.senderId === uid)
+        .map((m) => m.course);
+      
+      const uniqueCourses = [...new Set(userCourses)];
+      setUserCourseCount(uniqueCourses.length);
+    } catch (error) {
+      console.error('Error loading user course count:', error);
+      setUserCourseCount(0);
+    }
+  };
 
     initializeUser();
   }, []);
@@ -114,6 +135,22 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  // Load user's course count from match requests
+  const loadUserCourseCount = async (uid) => {
+    try {
+      const matchRequests = await getMyMatchRequests(uid);
+      const userCourses = matchRequests
+        .filter((m) => m.senderId === uid)
+        .map((m) => m.course);
+      
+      const uniqueCourses = [...new Set(userCourses)];
+      setUserCourseCount(uniqueCourses.length);
+    } catch (error) {
+      console.error('Error loading user course count:', error);
+      setUserCourseCount(0);
+    }
+  };
+
   // Function to load total unread message count
   const loadUnreadMessageCount = async (userId) => {
     try {
@@ -160,6 +197,7 @@ const HomeScreen = ({ navigation }) => {
         // Reload unread count and notes
         await loadUnreadMessageCount(current.uid);
         await loadUserNotes(current.uid);
+        await loadUserCourseCount(current.uid);
       } catch (error) {
         console.error('Error reloading data:', error);
       }
@@ -173,6 +211,7 @@ const HomeScreen = ({ navigation }) => {
         loadUserProfile(auth.currentUser.uid);
         loadUnreadMessageCount(auth.currentUser.uid);
         loadUserNotes(auth.currentUser.uid);
+        loadUserCourseCount(auth.currentUser.uid);
       }
     });
 
@@ -201,7 +240,7 @@ const HomeScreen = ({ navigation }) => {
     );
   };
 
-  // Get unique courses from user's notes
+  // Get unique courses from user's notes (keep as fallback)
   const getUserCourses = () => {
     const courses = new Set(userNotes.map(note => note.course));
     return courses.size;
@@ -341,7 +380,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
           <View style={styles.statCard}>
             <Ionicons name="school" size={24} color="#5856D6" />
-            <Text style={styles.statNumber}>{getUserCourses()}</Text>
+            <Text style={styles.statNumber}>{userCourseCount}</Text>
             <Text style={styles.statLabel}>Courses</Text>
           </View>
         </View>
