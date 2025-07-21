@@ -18,37 +18,232 @@ import {
   getNotesByCourse, 
   uploadMediaNote, 
   getNoteDetail,
-  deleteNote 
+  deleteNote,
+  searchNotesByCourse,
+  getAvailableCourses,
+  getNotesByUser,
+  updateNote
 } from '../backend/noteService';
 import { getUserInfo } from '../backend/userService';
 import { getMyMatchRequests } from '../backend/matchService';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const NotesScreen = () => {
-  const [view, setView] = useState('browse'); // 'browse', 'detail', 'upload'
+  const [view, setView] = useState('browse'); // 'browse', 'detail', 'upload', 'myNotes', 'editNote'
   const [selectedNote, setSelectedNote] = useState(null);
   const [selectedCourse, setSelectedCourse] = useState('');
   const [notes, setNotes] = useState({});
   const [loading, setLoading] = useState(false);
-  const [userCourses, setUserCourses] = useState([]); // User's actual courses
+  const [userCourses, setUserCourses] = useState([]);
+  
+  // My Notes state
+  const [myNotes, setMyNotes] = useState([]);
+  const [loadingMyNotes, setLoadingMyNotes] = useState(false);
+  
+  // Edit Note state
+  const [editTitle, setEditTitle] = useState('');
+  const [editCourse, setEditCourse] = useState('');
+  
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [courseSearchResults, setCourseSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchMode, setSearchMode] = useState(false);
+  const [selectedSearchCourse, setSelectedSearchCourse] = useState(null);
   
   // Upload form state
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadCourse, setUploadCourse] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
 
-  const courses = ['CS 2100', 'MATH 3100', 'PSYC 2500', 'CS 1010', 'CS 3240'];
-
   useEffect(() => {
     loadUserCourses();
   }, []);
 
   useEffect(() => {
-    if (selectedCourse) {
+    if (selectedCourse && !searchMode) {
       loadNotesForCourse(selectedCourse);
     }
-  }, [selectedCourse]);
+  }, [selectedCourse, searchMode]);
 
+  // Handle search functionality
+  const handleSearch = async (query) => {
+    setSearchQuery(query);
+    
+    if (!query.trim()) {
+      setSearchMode(false);
+      setSearchResults([]);
+      setCourseSearchResults([]);
+      setSelectedSearchCourse(null);
+      return;
+    }
+
+    setSearchMode(true);
+    setIsSearching(true);
+    setSelectedSearchCourse(null);
+    
+    try {
+      const courses = await getAvailableCourses(query);
+      setCourseSearchResults(courses);
+      setSearchResults([]);
+    } catch (error) {
+      console.error('Error searching courses:', error);
+      setCourseSearchResults([]);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Handle course card selection from search
+  const handleSearchCourseSelect = async (course) => {
+    setSelectedSearchCourse(course);
+    setIsSearching(true);
+    
+    try {
+      const courseNotes = await searchNotesByCourse(course);
+      
+      const notesWithAuthors = await Promise.all(
+        courseNotes.map(async (note) => {
+          try {
+            const authorInfo = await getUserInfo(note.authorId);
+            return {
+              ...note,
+              authorName: authorInfo?.name || 'Unknown Author',
+              authorComputingId: authorInfo?.computingId || note.authorId.slice(0, 8)
+            };
+          } catch (error) {
+            console.error('Error fetching author info:', error);
+            return {
+              ...note,
+              authorName: `Student ${note.authorId.slice(0, 8)}`,
+              authorComputingId: note.authorId.slice(0, 8)
+            };
+          }
+        })
+      );
+      
+      setSearchResults(notesWithAuthors);
+      setCourseSearchResults([]);
+    } catch (error) {
+      console.error('Error loading notes for course:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Clear search and return to user courses
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchMode(false);
+    setSearchResults([]);
+    setCourseSearchResults([]);
+    setSelectedSearchCourse(null);
+    if (userCourses.length > 0 && !selectedCourse) {
+      setSelectedCourse(userCourses[0]);
+    }
+  };
+
+  // Go back to course search results from notes view
+  const backToCourseSearch = () => {
+    setSelectedSearchCourse(null);
+    setSearchResults([]);
+    handleSearch(searchQuery);
+  };
+
+  // Load user's notes
+  const loadMyNotes = async () => {
+    setLoadingMyNotes(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const userNotes = await getNotesByUser(user.uid);
+      setMyNotes(userNotes);
+    } catch (error) {
+      console.error('Error loading my notes:', error);
+      setMyNotes([]);
+    } finally {
+      setLoadingMyNotes(false);
+    }
+  };
+
+  // Handle edit note
+  const handleEditNote = (note) => {
+    setSelectedNote(note);
+    setEditTitle(note.title);
+    setEditCourse(note.course);
+    setView('editNote');
+  };
+
+  // Handle update note
+  const handleUpdateNote = async () => {
+    if (!editTitle.trim()) {
+      Alert.alert('Error', 'Please enter a title for your note');
+      return;
+    }
+    if (!editCourse.trim()) {
+      Alert.alert('Error', 'Please enter a course');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert('Error', 'You must be logged in to update notes');
+        return;
+      }
+
+      await updateNote(selectedNote.id, {
+        title: editTitle.trim(),
+        course: editCourse.trim(),
+      }, user.uid);
+
+      Alert.alert('Success', 'Note updated successfully!');
+      
+      // Reset form and reload
+      setEditTitle('');
+      setEditCourse('');
+      await loadMyNotes();
+      setView('myNotes');
+    } catch (error) {
+      console.error('Error updating note:', error);
+      Alert.alert('Error', 'Failed to update note. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle delete note from my notes
+  const handleDeleteMyNote = async (noteId) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    Alert.alert(
+      'Delete Note',
+      'Are you sure you want to delete this note?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteNote(noteId, user.uid);
+              Alert.alert('Success', 'Note deleted successfully');
+              await loadMyNotes();
+            } catch (error) {
+              console.error('Error deleting note:', error);
+              Alert.alert('Error', error.message || 'Failed to delete note');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const uploadFileToFirebase = async (fileUri, uid) => {
     console.log('Start uploading file:', fileUri);
@@ -96,8 +291,7 @@ const NotesScreen = () => {
       const uniqueCourses = [...new Set(userCoursesList)];
       setUserCourses(uniqueCourses);
       
-      // Set the first course as selected if available
-      if (uniqueCourses.length > 0 && !selectedCourse) {
+      if (uniqueCourses.length > 0 && !selectedCourse && !searchMode) {
         setSelectedCourse(uniqueCourses[0]);
       }
     } catch (error) {
@@ -112,7 +306,6 @@ const NotesScreen = () => {
     try {
       const courseNotes = await getNotesByCourse(course);
       
-      // Fetch author information for each note
       const notesWithAuthors = await Promise.all(
         courseNotes.map(async (note) => {
           try {
@@ -139,7 +332,6 @@ const NotesScreen = () => {
       }));
     } catch (error) {
       console.error('Error loading notes:', error);
-      // Set empty array instead of showing alert immediately
       setNotes(prev => ({
         ...prev,
         [course]: []
@@ -154,7 +346,6 @@ const NotesScreen = () => {
     try {
       const noteDetail = await getNoteDetail(note.id);
       
-      // Fetch author information if not already available
       let authorInfo = null;
       if (!noteDetail.authorName) {
         try {
@@ -258,8 +449,6 @@ const NotesScreen = () => {
         return;
       }
 
-      // In a real app, you'd upload the file to Firebase Storage first
-      // and get the download URL. For now, we'll use the local URI
       const mediaURL = await uploadFileToFirebase(selectedFile.uri, user.uid);
       await uploadMediaNote({
         uid: user.uid,
@@ -268,15 +457,12 @@ const NotesScreen = () => {
         mediaURL: mediaURL,
       });
 
-
       Alert.alert('Success', 'Note uploaded successfully!');
       
-      // Reset form
       setUploadTitle('');
       setUploadCourse('');
       setSelectedFile(null);
       
-      // Reload notes for the course and refresh user courses
       await loadNotesForCourse(uploadCourse.trim());
       await loadUserCourses();
       
@@ -307,7 +493,9 @@ const NotesScreen = () => {
               await deleteNote(noteId, user.uid);
               Alert.alert('Success', 'Note deleted successfully');
               setView('browse');
-              await loadNotesForCourse(selectedCourse);
+              if (selectedCourse) {
+                await loadNotesForCourse(selectedCourse);
+              }
             } catch (error) {
               console.error('Error deleting note:', error);
               Alert.alert('Error', error.message || 'Failed to delete note');
@@ -357,44 +545,163 @@ const NotesScreen = () => {
     <ScrollView contentContainerStyle={styles.scrollView}>
       <View style={styles.header}>
         <Text style={styles.title}>Browse Notes</Text>
-        <TouchableOpacity onPress={() => setView('upload')}>
-          <Ionicons name="cloud-upload-outline" size={24} color="#007AFF" />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity 
+            onPress={() => {
+              loadMyNotes();
+              setView('myNotes');
+            }}
+            style={styles.headerButton}
+          >
+            <Ionicons name="folder-outline" size={24} color="#007AFF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setView('upload')} style={styles.headerButton}>
+            <Ionicons name="cloud-upload-outline" size={24} color="#007AFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.courseSelector}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {userCourses.length > 0 ? (
-            userCourses.map((course) => (
-              <TouchableOpacity
-                key={course}
-                style={[
-                  styles.courseButton,
-                  selectedCourse === course && styles.courseButtonActive,
-                ]}
-                onPress={() => setSelectedCourse(course)}
-              >
-                <Text
-                  style={[
-                    styles.courseButtonText,
-                    selectedCourse === course && styles.courseButtonTextActive,
-                  ]}
-                >
-                  {course}
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBarContainer}>
+          <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by course (e.g., CS 2100) or title"
+            value={searchQuery}
+            onChangeText={handleSearch}
+            autoCapitalize="characters"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+              <Ionicons name="close-circle" size={20} color="#666" />
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        {searchMode && (
+          <View style={styles.searchModeIndicator}>
+            {selectedSearchCourse ? (
+              <View style={styles.breadcrumbContainer}>
+                <TouchableOpacity onPress={backToCourseSearch} style={styles.breadcrumbButton}>
+                  <Ionicons name="chevron-back" size={16} color="#007AFF" />
+                  <Text style={styles.breadcrumbText}>Back to courses</Text>
+                </TouchableOpacity>
+                <Text style={styles.searchModeText}>
+                  Showing {searchResults.length} notes for {selectedSearchCourse}
                 </Text>
+              </View>
+            ) : (
+              <Text style={styles.searchModeText}>
+                {isSearching ? 'Searching courses...' : `Found ${courseSearchResults.length} courses matching "${searchQuery}"`}
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* User Courses Section - Only show when not in search mode */}
+      {!searchMode && (
+        <View style={styles.courseSelector}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {userCourses.length > 0 ? (
+              userCourses.map((course) => (
+                <TouchableOpacity
+                  key={course}
+                  style={[
+                    styles.courseButton,
+                    selectedCourse === course && styles.courseButtonActive,
+                  ]}
+                  onPress={() => setSelectedCourse(course)}
+                >
+                  <Text
+                    style={[
+                      styles.courseButtonText,
+                      selectedCourse === course && styles.courseButtonTextActive,
+                    ]}
+                  >
+                    {course}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.noCoursesContainer}>
+                <Text style={styles.noCoursesText}>No courses added yet</Text>
+                <Text style={styles.noCoursesSubtext}>Add courses in the Find Partners section first</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      )}
+
+      <View style={styles.section}>
+        {searchMode ? (
+          // Search Results
+          isSearching ? (
+            <Text style={styles.loadingText}>Searching...</Text>
+          ) : selectedSearchCourse ? (
+            // Show notes for selected course
+            searchResults.length > 0 ? (
+              searchResults.map((note) => (
+                <TouchableOpacity
+                  key={note.id}
+                  style={styles.noteCard}
+                  onPress={() => handleNoteSelect(note)}
+                >
+                  <Ionicons name="document-text-outline" size={28} color="#34C759" style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.noteTitle}>{note.title}</Text>
+                    <Text style={styles.noteMeta}>{getAuthorName(note)}</Text>
+                    <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
+                  </View>
+                  <View style={styles.noteRatingContainer}>
+                    <Text style={styles.noteRating}>⭐ {note.rating?.toFixed(1) || '0.0'}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="document-outline" size={48} color="#999" />
+                <Text style={styles.placeholderText}>No notes found</Text>
+                <Text style={styles.placeholderSubtext}>
+                  No notes available for {selectedSearchCourse} yet.
+                </Text>
+              </View>
+            )
+          ) : courseSearchResults.length > 0 ? (
+            // Show course cards
+            courseSearchResults.map((course) => (
+              <TouchableOpacity
+                key={course.code}
+                style={styles.courseCard}
+                onPress={() => handleSearchCourseSelect(course.code)}
+              >
+                <View style={styles.courseCardIcon}>
+                  <Ionicons name="school-outline" size={24} color="#007AFF" />
+                </View>
+                <View style={styles.courseCardContent}>
+                  <Text style={styles.courseCardTitle}>{course.code}</Text>
+                  <Text style={styles.courseCardSubtitle}>{course.noteCount} notes available</Text>
+                  {course.sections && course.sections.length > 0 && (
+                    <Text style={styles.courseCardSections}>
+                      Sections: {course.sections.slice(0, 3).join(', ')}
+                      {course.sections.length > 3 && ` +${course.sections.length - 3} more`}
+                    </Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
               </TouchableOpacity>
             ))
           ) : (
-            <View style={styles.noCoursesContainer}>
-              <Text style={styles.noCoursesText}>No courses added yet</Text>
-              <Text style={styles.noCoursesSubtext}>Add courses in the Find Partners section first</Text>
+            <View style={styles.emptyState}>
+              <Ionicons name="search-outline" size={48} color="#999" />
+              <Text style={styles.placeholderText}>No courses found</Text>
+              <Text style={styles.placeholderSubtext}>
+                Try searching for a course like "CS", "MATH", or "PSYC"
+              </Text>
             </View>
-          )}
-        </ScrollView>
-      </View>
-
-      <View style={styles.section}>
-        {userCourses.length === 0 ? (
+          )
+        ) : userCourses.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="school-outline" size={48} color="#999" />
             <Text style={styles.placeholderText}>No courses added yet</Text>
@@ -494,6 +801,7 @@ const NotesScreen = () => {
           <Ionicons name="chevron-back" size={24} color="#007AFF" />
         </TouchableOpacity>
         <Text style={styles.title}>Upload Note</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       <View style={styles.section}>
@@ -571,18 +879,134 @@ const NotesScreen = () => {
     </ScrollView>
   );
 
+  // --- MY NOTES VIEW ---
+  const renderMyNotesView = () => (
+    <ScrollView contentContainerStyle={styles.scrollView}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => setView('browse')}>
+          <Ionicons name="chevron-back" size={24} color="#007AFF" />
+        </TouchableOpacity>
+        <Text style={styles.title}>My Notes</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      <View style={styles.section}>
+        {loadingMyNotes ? (
+          <Text style={styles.loadingText}>Loading your notes...</Text>
+        ) : myNotes.length > 0 ? (
+          myNotes.map((note) => (
+            <View key={note.id} style={styles.myNoteCard}>
+              <View style={styles.myNoteContent}>
+                <Text style={styles.noteTitle}>{note.title}</Text>
+                <Text style={styles.noteMeta}>{note.course}</Text>
+                <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
+              </View>
+              <View style={styles.myNoteActions}>
+                <TouchableOpacity 
+                  onPress={() => handleEditNote(note)}
+                  style={styles.editButton}
+                >
+                  <Ionicons name="pencil" size={18} color="#007AFF" />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => handleDeleteMyNote(note.id)}
+                  style={styles.deleteButton}
+                >
+                  <Ionicons name="trash" size={18} color="#FF3B30" />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => handleNoteSelect(note)}
+                  style={styles.viewButton}
+                >
+                  <Ionicons name="eye" size={18} color="#34C759" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="document-outline" size={48} color="#999" />
+            <Text style={styles.placeholderText}>No notes uploaded yet</Text>
+            <Text style={styles.placeholderSubtext}>
+              Upload your first note to get started!
+            </Text>
+          </View>
+        )}
+      </View>
+    </ScrollView>
+  );
+
+  // --- EDIT NOTE VIEW ---
+  const renderEditNoteView = () => (
+    <ScrollView contentContainerStyle={styles.scrollView}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => setView('myNotes')}>
+          <Ionicons name="chevron-back" size={24} color="#007AFF" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Edit Note</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.uploadCard}>
+          <Text style={styles.detailLabel}>Title *</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="e.g., Week 2 Summary"
+            value={editTitle}
+            onChangeText={setEditTitle}
+          />
+
+          <Text style={styles.detailLabel}>Course *</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="e.g., CS 2100"
+            value={editCourse}
+            onChangeText={setEditCourse}
+            autoCapitalize="characters"
+          />
+
+          <View style={styles.noteInfoCard}>
+            <Text style={styles.detailLabel}>File</Text>
+            <Text style={styles.detailText}>
+              Original file will be kept. To change the file, please delete this note and upload a new one.
+            </Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.submitButton, loading && styles.submitButtonDisabled]} 
+            onPress={handleUpdateNote}
+            disabled={loading}
+          >
+            <Ionicons name="checkmark" size={18} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.submitText}>
+              {loading ? 'Updating...' : 'Update Note'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ScrollView>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       {view === 'browse' && renderBrowseView()}
       {view === 'detail' && renderDetailView()}
       {view === 'upload' && renderUploadView()}
+      {view === 'myNotes' && renderMyNotesView()}
+      {view === 'editNote' && renderEditNoteView()}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
-  scrollView: { paddingBottom: 40 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f8f9fa' 
+  },
+  scrollView: { 
+    paddingBottom: 40 
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -591,7 +1015,84 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 10,
   },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#333', flex: 1, textAlign: 'center' },
+  title: { 
+    fontSize: 28, 
+    fontWeight: 'bold', 
+    color: '#333', 
+    flex: 1, 
+    textAlign: 'center' 
+  },
+  
+  // Header buttons
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerButton: {
+    padding: 4,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  
+  // Search bar styles
+  searchContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  clearButton: {
+    padding: 4,
+  },
+  searchModeIndicator: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  searchModeText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  
+  // Breadcrumb styles
+  breadcrumbContainer: {
+    flexDirection: 'column',
+    gap: 4,
+  },
+  breadcrumbButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  breadcrumbText: {
+    fontSize: 14,
+    color: '#007AFF',
+    marginLeft: 4,
+  },
+  
   courseSelector: {
     paddingHorizontal: 20,
     marginBottom: 10,
@@ -607,15 +1108,25 @@ const styles = StyleSheet.create({
   courseButtonActive: {
     backgroundColor: '#007AFF',
   },
-  courseButtonText: { fontWeight: '500', color: '#333' },
-  courseButtonTextActive: { color: '#fff' },
-  section: { paddingHorizontal: 20, marginTop: 10 },
+  courseButtonText: { 
+    fontWeight: '500', 
+    color: '#333' 
+  },
+  courseButtonTextActive: { 
+    color: '#fff' 
+  },
+  
+  section: { 
+    paddingHorizontal: 20, 
+    marginTop: 10 
+  },
   loadingText: {
     textAlign: 'center',
     color: '#666',
     fontSize: 16,
     marginTop: 20,
   },
+  
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -629,13 +1140,73 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
-  noteTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
-  noteMeta: { fontSize: 14, color: '#666', marginTop: 2 },
-  noteDate: { fontSize: 12, color: '#999', marginTop: 1 },
+  noteTitle: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: '#333' 
+  },
+  noteMeta: { 
+    fontSize: 14, 
+    color: '#666', 
+    marginTop: 2 
+  },
+  noteDate: { 
+    fontSize: 12, 
+    color: '#999', 
+    marginTop: 1 
+  },
   noteRatingContainer: {
     alignItems: 'flex-end',
   },
-  noteRating: { fontSize: 14, color: '#007AFF', fontWeight: 'bold' },
+  noteRating: { 
+    fontSize: 14, 
+    color: '#007AFF', 
+    fontWeight: 'bold' 
+  },
+  
+  // Course card styles
+  courseCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  courseCardIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#f0f7ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  courseCardContent: {
+    flex: 1,
+  },
+  courseCardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  courseCardSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  courseCardSections: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
+  },
+  
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -653,6 +1224,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 14,
   },
+  
   detailCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -670,7 +1242,10 @@ const styles = StyleSheet.create({
     color: '#555',
     marginBottom: 4,
   },
-  detailText: { fontSize: 16, color: '#333' },
+  detailText: { 
+    fontSize: 16, 
+    color: '#333' 
+  },
   downloadButton: {
     flexDirection: 'row',
     marginTop: 30,
@@ -680,7 +1255,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  downloadText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  downloadText: { 
+    color: '#fff', 
+    fontSize: 16, 
+    fontWeight: '600' 
+  },
+  
   uploadCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -726,7 +1306,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  uploadFileText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  uploadFileText: { 
+    color: '#fff', 
+    fontSize: 16, 
+    fontWeight: '600' 
+  },
   submitButton: {
     flexDirection: 'row',
     marginTop: 20,
@@ -739,7 +1323,11 @@ const styles = StyleSheet.create({
   submitButtonDisabled: {
     backgroundColor: '#999',
   },
-  submitText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  submitText: { 
+    color: '#fff', 
+    fontSize: 16, 
+    fontWeight: '600' 
+  },
   
   // Course dropdown styles
   courseDropdownContainer: {
@@ -774,6 +1362,52 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontWeight: '500',
     marginTop: 4,
+  },
+  
+  // My Notes styles
+  myNoteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  myNoteContent: {
+    flex: 1,
+  },
+  myNoteActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  editButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f0f7ff',
+  },
+  deleteButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#fff0f0',
+  },
+  viewButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f0fff0',
+  },
+  noteInfoCard: {
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
   
   // No courses styles
