@@ -22,6 +22,7 @@ import {
 } from '../backend/noteService';
 import { getUserInfo } from '../backend/userService';
 import { getMyMatchRequests } from '../backend/matchService';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const NotesScreen = () => {
   const [view, setView] = useState('browse'); // 'browse', 'detail', 'upload'
@@ -47,6 +48,39 @@ const NotesScreen = () => {
       loadNotesForCourse(selectedCourse);
     }
   }, [selectedCourse]);
+
+
+  const uploadFileToFirebase = async (fileUri, uid) => {
+    console.log('Start uploading file:', fileUri);
+
+    const storage = getStorage();
+    const fileExt = fileUri.split('.').pop();
+    const mimeType = getMimeType(fileUri);
+    console.log('Detected MIME type:', mimeType);
+
+    const response = await fetch(fileUri);
+    console.log('Fetch response ok?', response.ok);
+    const blob = await response.blob();
+    console.log('Blob size:', blob.size);
+
+    const filename = `notes/${uid}_${Date.now()}.${fileExt}`;
+    const storageRef = ref(storage, filename);
+    console.log('Uploading to Firebase Storage:', filename);
+
+    await uploadBytes(storageRef, blob, { contentType: mimeType });
+    console.log('Upload successful');
+
+    const downloadURL = await getDownloadURL(storageRef);
+    console.log('File URL:', downloadURL);
+    return downloadURL;
+  };
+
+  const getMimeType = (uri) => {
+    if (uri.endsWith('.pdf')) return 'application/pdf';
+    if (uri.endsWith('.jpg') || uri.endsWith('.jpeg')) return 'image/jpeg';
+    if (uri.endsWith('.png')) return 'image/png';
+    return 'application/octet-stream';
+  };
 
   // Load user's courses from match requests
   const loadUserCourses = async () => {
@@ -226,14 +260,14 @@ const NotesScreen = () => {
 
       // In a real app, you'd upload the file to Firebase Storage first
       // and get the download URL. For now, we'll use the local URI
-      const mediaURL = selectedFile.uri;
-
+      const mediaURL = await uploadFileToFirebase(selectedFile.uri, user.uid);
       await uploadMediaNote({
         uid: user.uid,
         title: uploadTitle.trim(),
         course: uploadCourse.trim(),
-        mediaURL: mediaURL
+        mediaURL: mediaURL,
       });
+
 
       Alert.alert('Success', 'Note uploaded successfully!');
       
