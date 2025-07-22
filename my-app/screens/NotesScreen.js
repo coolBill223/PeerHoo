@@ -22,7 +22,8 @@ import {
   searchNotesByCourse,
   getAvailableCourses,
   getNotesByUser,
-  updateNote
+  updateNote,
+  rateNote
 } from '../backend/noteService';
 import { getUserInfo } from '../backend/userService';
 import { getMyMatchRequests } from '../backend/matchService';
@@ -43,6 +44,10 @@ const NotesScreen = () => {
   // Edit Note state
   const [editTitle, setEditTitle] = useState('');
   const [editCourse, setEditCourse] = useState('');
+  
+  // Rating state
+  const [userRating, setUserRating] = useState(0);
+  const [isRating, setIsRating] = useState(false);
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,6 +71,37 @@ const NotesScreen = () => {
       loadNotesForCourse(selectedCourse);
     }
   }, [selectedCourse, searchMode]);
+
+  // Handle rating submission
+  const handleRateNote = async (rating) => {
+    if (!selectedNote || !auth.currentUser) return;
+    
+    if (selectedNote.authorId === auth.currentUser.uid) {
+      Alert.alert('Error', 'You cannot rate your own note');
+      return;
+    }
+
+    setIsRating(true);
+    try {
+      const newAvgRating = await rateNote(selectedNote.id, rating, auth.currentUser.uid);
+      setUserRating(rating);
+      setSelectedNote(prev => ({
+        ...prev,
+        rating: newAvgRating
+      }));
+      Alert.alert('Success', 'Thank you for rating this note!');
+    } catch (error) {
+      console.error('Error rating note:', error);
+      Alert.alert('Error', 'Failed to submit rating. Please try again.');
+    } finally {
+      setIsRating(false);
+    }
+  };
+
+  // Reset rating state when viewing a new note
+  const resetRatingState = () => {
+    setUserRating(0);
+  };
 
   // Handle search functionality
   const handleSearch = async (query) => {
@@ -362,6 +398,7 @@ const NotesScreen = () => {
       };
       
       setSelectedNote(noteWithAuthor);
+      resetRatingState();
       setView('detail');
     } catch (error) {
       console.error('Error loading note details:', error);
@@ -523,6 +560,32 @@ const NotesScreen = () => {
     }
   };
 
+  // Render star rating component
+  const renderStarRating = (currentRating = 0, onRatingPress = null, size = 20) => {
+    const stars = [];
+    const isInteractive = onRatingPress !== null;
+    
+    for (let i = 1; i <= 5; i++) {
+      const filled = i <= currentRating;
+      stars.push(
+        <TouchableOpacity
+          key={i}
+          onPress={() => isInteractive && onRatingPress(i)}
+          disabled={!isInteractive || isRating}
+          style={styles.starButton}
+        >
+          <Ionicons
+            name={filled ? "star" : "star-outline"}
+            size={size}
+            color={filled ? "#FFD700" : "#ddd"}
+          />
+        </TouchableOpacity>
+      );
+    }
+    
+    return <View style={styles.starContainer}>{stars}</View>;
+  };
+
   // Get author name for display
   const getAuthorName = (note) => {
     return note.authorName || `Student ${note.authorId?.slice(0, 8) || 'Unknown'}`;
@@ -655,7 +718,8 @@ const NotesScreen = () => {
                     <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
                   </View>
                   <View style={styles.noteRatingContainer}>
-                    <Text style={styles.noteRating}>⭐ {note.rating?.toFixed(1) || '0.0'}</Text>
+                    {renderStarRating(note.rating || 0, null, 16)}
+                    <Text style={styles.noteRatingText}>{(note.rating || 0).toFixed(1)}</Text>
                   </View>
                 </TouchableOpacity>
               ))
@@ -731,7 +795,8 @@ const NotesScreen = () => {
                 <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
               </View>
               <View style={styles.noteRatingContainer}>
-                <Text style={styles.noteRating}>⭐ {note.rating?.toFixed(1) || '0.0'}</Text>
+                {renderStarRating(note.rating || 0, null, 16)}
+                <Text style={styles.noteRatingText}>{(note.rating || 0).toFixed(1)}</Text>
               </View>
             </TouchableOpacity>
           ))
@@ -781,8 +846,24 @@ const NotesScreen = () => {
           <Text style={styles.detailLabel}>Uploaded</Text>
           <Text style={styles.detailText}>{formatDate(selectedNote?.createdAt)}</Text>
 
-          <Text style={styles.detailLabel}>Rating</Text>
-          <Text style={styles.detailText}>⭐ {selectedNote?.rating?.toFixed(1) || '0.0'}</Text>
+          <Text style={styles.detailLabel}>Current Rating</Text>
+          <View style={styles.ratingDisplayContainer}>
+            {renderStarRating(selectedNote?.rating || 0, null, 24)}
+            <Text style={styles.ratingText}>({(selectedNote?.rating || 0).toFixed(1)})</Text>
+          </View>
+
+          {/* Rating Section - Only show if user is not the author */}
+          {selectedNote?.authorId !== auth.currentUser?.uid && (
+            <>
+              <Text style={styles.detailLabel}>Rate this Note</Text>
+              <View style={styles.userRatingContainer}>
+                {renderStarRating(userRating, handleRateNote, 32)}
+                <Text style={styles.ratingInstructions}>
+                  {userRating > 0 ? `You rated: ${userRating} star${userRating > 1 ? 's' : ''}` : 'Tap a star to rate'}
+                </Text>
+              </View>
+            </>
+          )}
 
           <TouchableOpacity style={styles.downloadButton} onPress={handleViewNote}>
             <Ionicons name="eye-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
@@ -900,6 +981,10 @@ const NotesScreen = () => {
                 <Text style={styles.noteTitle}>{note.title}</Text>
                 <Text style={styles.noteMeta}>{note.course}</Text>
                 <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
+                <View style={styles.myNoteRating}>
+                  {renderStarRating(note.rating || 0, null, 14)}
+                  <Text style={styles.myNoteRatingText}>({(note.rating || 0).toFixed(1)})</Text>
+                </View>
               </View>
               <View style={styles.myNoteActions}>
                 <TouchableOpacity 
@@ -1158,10 +1243,46 @@ const styles = StyleSheet.create({
   noteRatingContainer: {
     alignItems: 'flex-end',
   },
-  noteRating: { 
-    fontSize: 14, 
-    color: '#007AFF', 
-    fontWeight: 'bold' 
+  noteRatingText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  
+  // Star rating styles
+  starContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  starButton: {
+    marginHorizontal: 1,
+  },
+  
+  // Rating display styles
+  ratingDisplayContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  ratingText: {
+    fontSize: 16,
+    color: '#666',
+    marginLeft: 8,
+  },
+  
+  // User rating styles
+  userRatingContainer: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  ratingInstructions: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+    textAlign: 'center',
   },
   
   // Course card styles
@@ -1380,6 +1501,16 @@ const styles = StyleSheet.create({
   },
   myNoteContent: {
     flex: 1,
+  },
+  myNoteRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  myNoteRatingText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
   },
   myNoteActions: {
     flexDirection: 'row',
