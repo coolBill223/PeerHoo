@@ -225,3 +225,37 @@ export const getNoteDetail = async (noteId) => {
   if (!snap.exists()) throw new Error('Note not found');
   return { id: snap.id, ...snap.data() };
 };
+
+/**
+ * Rate a note (each user can rate once)
+ * @param {string} noteId - ID of the note
+ * @param {number} ratingValue - A number between 1 and 5
+ * @param {string} userId - Current user's UID
+ */
+export const rateNote = async (noteId, ratingValue, userId) => {
+  if (ratingValue < 1 || ratingValue > 5) {
+    throw new Error('Rating must be between 1 and 5');
+  }
+
+  const noteRef = doc(db, 'notes', noteId);
+  const ratingRef = doc(db, 'notes', noteId, 'ratings', userId);
+
+  // Save or update the user's rating
+  await setDoc(ratingRef, {
+    userId,
+    value: ratingValue,
+    updatedAt: serverTimestamp(),
+  });
+
+  // Recalculate average rating
+  const ratingsSnap = await getDocs(collection(db, 'notes', noteId, 'ratings'));
+  const ratings = ratingsSnap.docs.map(doc => doc.data().value);
+  const avgRating = ratings.reduce((sum, val) => sum + val, 0) / ratings.length;
+
+  // Update the note's average rating
+  await updateDoc(noteRef, {
+    rating: avgRating,
+  });
+
+  return avgRating;
+};
