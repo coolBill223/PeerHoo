@@ -259,3 +259,74 @@ export const rateNote = async (noteId, ratingValue, userId) => {
 
   return avgRating;
 };
+
+/**
+ * Add a comment to a note
+ * @param {string} noteId - ID of the note
+ * @param {string} userId - UID of the commenter
+ * @param {string} content - Comment text
+ */
+export const addCommentToNote = async (noteId, userId, content) => {
+  if (!content.trim()) throw new Error('Comment cannot be empty');
+  
+  const commentRef = collection(db, 'notes', noteId, 'comments');
+  await addDoc(commentRef, {
+    userId,
+    content: content.trim(),
+    createdAt: serverTimestamp(),
+  });
+};
+
+/**
+ * Get all comments for a note, sorted by time
+ * @param {string} noteId - ID of the note
+ * @returns {Array} list of comments
+ */
+export const getCommentsForNote = async (noteId) => {
+  const q = query(collection(db, 'notes', noteId, 'comments'));
+  const snap = await getDocs(q);
+  
+  const comments = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+
+  return comments.sort((a, b) => {
+    if (!a.createdAt) return 1;
+    if (!b.createdAt) return -1;
+    return a.createdAt.toMillis() - b.createdAt.toMillis();
+  });
+};
+
+/**
+ * Delete a comment from a note
+ */
+export const deleteCommentFromNote = async (noteId, commentId, currentUid) => {
+  const commentRef = doc(db, 'notes', noteId, 'comments', commentId);
+  const snap = await getDoc(commentRef);
+
+  if (!snap.exists()) throw new Error('Comment not found');
+  if (snap.data().userId !== currentUid) throw new Error('Unauthorized');
+
+  await deleteDoc(commentRef);
+};
+
+/**
+ * Edit a comment from a note
+ * @param {string} noteId - Note ID
+ * @param {string} commentId - Comment ID
+ * @param {string} currentUid - UID of the editor
+ * @param {string} newContent - New comment content
+ */
+export const updateCommentOnNote = async (noteId, commentId, currentUid, newContent) => {
+  const commentRef = doc(db, 'notes', noteId, 'comments', commentId);
+  const snap = await getDoc(commentRef);
+
+  if (!snap.exists()) throw new Error('Comment not found');
+  if (snap.data().userId !== currentUid) throw new Error('Unauthorized');
+
+  await updateDoc(commentRef, {
+    content: newContent.trim(),
+    updatedAt: serverTimestamp(),
+  });
+};
