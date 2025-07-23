@@ -34,6 +34,7 @@ export const registerUser = async ({ email, password, name, computingId }) => {
     name,
     email,
     computingId,
+    photoURL: '', //profile pics
     createdAt: serverTimestamp(),
   });
 

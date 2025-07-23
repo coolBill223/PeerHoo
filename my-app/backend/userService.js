@@ -11,7 +11,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
-
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 /**
  * Get user info by UID with enhanced name resolution
  */
@@ -143,7 +143,7 @@ export const updateUserProfile = async (profileData) => {
       throw new Error('No authenticated user found');
     }
 
-    const { name, bio, courses, studyTimes, meetingPreference, selectedAvatar } = profileData;
+    const { name, bio, courses, studyTimes, meetingPreference, selectedAvatar, photoURL } = profileData;
 
     // Prepare update data
     const updateData = {
@@ -157,7 +157,8 @@ export const updateUserProfile = async (profileData) => {
     if (studyTimes !== undefined) updateData.studyTimes = studyTimes;
     if (meetingPreference !== undefined) updateData.meetingPreference = meetingPreference;
     if (selectedAvatar !== undefined) updateData.selectedAvatar = selectedAvatar;
-
+    if (photoURL !== undefined) updateData.photoURL = photoURL;
+    
     // Update Firestore document
     await updateDoc(doc(db, 'users', currentUser.uid), updateData);
     console.log('Updated user profile in Firestore:', updateData);
@@ -527,4 +528,25 @@ export const forceRecreateUserDocuments = async () => {
     console.error('Error forcing recreation:', error);
     return { success: false, message: error.message };
   }
+};
+
+
+/*
+*upload user profile pictures
+*/
+export const uploadProfilePicture = async (uid, fileBlob) => {
+  const storage = getStorage();
+  const profilePicRef = ref(storage, `profilePics/${uid}.jpg`);
+
+  await uploadBytes(profilePicRef, fileBlob);
+  const downloadURL = await getDownloadURL(profilePicRef);
+  return downloadURL;
+};
+
+// update user profile pictures
+export const updateUserPhotoURL = async (uid, photoURL) => {
+  await updateDoc(doc(db, 'users', uid), {
+    photoURL,
+    lastUpdated: serverTimestamp(),
+  });
 };
