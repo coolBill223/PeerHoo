@@ -19,6 +19,19 @@ import { getMyMatchRequests } from '../backend/matchService'; // Import match se
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getUnreadCount } from '../backend/chatService';
 
+const tipBank = [
+  "Share your notes after each lecture to help your classmates and build your reputation!",
+  "Use flashcards to reinforce your memory of key concepts.",
+  "Teach a concept to someone else to make sure you really understand it.",
+  "Review your notes within 24 hours of class to retain information better.",
+  "Form small study groups to compare notes and quiz each other.",
+  "Organize your files and notes so you can easily find them before exams.",
+  "Take short breaks to recharge your brain and reduce burnout.",
+  "Use spaced repetition to retain concepts over the long term.",
+  "Having a study buddy can keep you accountable and motivated, as long as you both stay focused (minimal yaping).",
+  "Write down questions while studying and bring them to class."
+];
+
 const HomeScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -26,6 +39,7 @@ const HomeScreen = ({ navigation }) => {
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
   const [userNotes, setUserNotes] = useState([]); // Add state for user's notes
   const [userCourseCount, setUserCourseCount] = useState(0); // Add state for course count
+  const [currentTip, setCurrentTip] = useState('');
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -56,6 +70,8 @@ const HomeScreen = ({ navigation }) => {
           console.error('Error fetching data:', error);
         }
       }
+      const randomTip = tipBank[Math.floor(Math.random() * tipBank.length)];
+      setCurrentTip(randomTip);
     };
 
   // Load user's course count from match requests
@@ -479,10 +495,8 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Study Tips</Text>
           <View style={styles.tipCard}>
-            <Ionicons name="bulb" size={20} color="#FF9500" />
-            <Text style={styles.tipText}>
-              Share your notes after each lecture to help your classmates and build your reputation!
-            </Text>
+          <Ionicons name="bulb" size={20} color="#FF9500" />
+          <Text style={styles.tipText}>{currentTip}</Text>
           </View>
         </View>
       </ScrollView>
