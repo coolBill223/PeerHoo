@@ -9,6 +9,8 @@ import {
   TextInput,
   Alert,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,7 +25,11 @@ import {
   getAvailableCourses,
   getNotesByUser,
   updateNote,
-  rateNote
+  rateNote,
+  addCommentToNote,
+  getCommentsForNote,
+  deleteCommentFromNote,
+  updateCommentOnNote
 } from '../backend/noteService';
 import { getUserInfo } from '../backend/userService';
 import { getMyMatchRequests } from '../backend/matchService';
@@ -62,6 +68,14 @@ const NotesScreen = () => {
   const [uploadCourse, setUploadCourse] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
 
+  // Comments state
+  const [comments, setComments] = useState([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [isAddingComment, setIsAddingComment] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+
   useEffect(() => {
     loadUserCourses();
   }, []);
@@ -71,6 +85,136 @@ const NotesScreen = () => {
       loadNotesForCourse(selectedCourse);
     }
   }, [selectedCourse, searchMode]);
+
+  // Load comments when viewing note details
+  useEffect(() => {
+    if (view === 'detail' && selectedNote) {
+      loadComments();
+    }
+  }, [view, selectedNote]);
+
+  // Comments functions
+  const loadComments = async () => {
+    if (!selectedNote) return;
+    
+    setLoadingComments(true);
+    try {
+      const noteComments = await getCommentsForNote(selectedNote.id);
+      
+      // Get user info for each comment
+      const commentsWithUserInfo = await Promise.all(
+        noteComments.map(async (comment) => {
+          try {
+            const userInfo = await getUserInfo(comment.userId);
+            return {
+              ...comment,
+              userName: userInfo?.name || `Student ${comment.userId.slice(0, 8)}`,
+              userComputingId: userInfo?.computingId || comment.userId.slice(0, 8)
+            };
+          } catch (error) {
+            console.error('Error fetching user info for comment:', error);
+            return {
+              ...comment,
+              userName: `Student ${comment.userId.slice(0, 8)}`,
+              userComputingId: comment.userId.slice(0, 8)
+            };
+          }
+        })
+      );
+      
+      setComments(commentsWithUserInfo);
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !selectedNote || !auth.currentUser) return;
+
+    setIsAddingComment(true);
+    try {
+      await addCommentToNote(selectedNote.id, auth.currentUser.uid, newComment.trim());
+      setNewComment('');
+      await loadComments(); // Reload comments
+      Alert.alert('Success', 'Comment added successfully!');
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      Alert.alert('Error', 'Failed to add comment. Please try again.');
+    } finally {
+      setIsAddingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (!auth.currentUser) return;
+
+    Alert.alert(
+      'Delete Comment',
+      'Are you sure you want to delete this comment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCommentFromNote(selectedNote.id, commentId, auth.currentUser.uid);
+              await loadComments(); // Reload comments
+              Alert.alert('Success', 'Comment deleted successfully');
+            } catch (error) {
+              console.error('Error deleting comment:', error);
+              Alert.alert('Error', error.message || 'Failed to delete comment');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleEditComment = (comment) => {
+    setEditingCommentId(comment.id);
+    setEditingCommentText(comment.content);
+  };
+
+  const handleUpdateComment = async () => {
+    if (!editingCommentText.trim() || !editingCommentId || !auth.currentUser) return;
+
+    try {
+      await updateCommentOnNote(selectedNote.id, editingCommentId, auth.currentUser.uid, editingCommentText.trim());
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      await loadComments(); // Reload comments
+      Alert.alert('Success', 'Comment updated successfully!');
+    } catch (error) {
+      console.error('Error updating comment:', error);
+      Alert.alert('Error', error.message || 'Failed to update comment');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setEditingCommentText('');
+  };
+
+  // Format comment timestamp
+  const formatCommentDate = (timestamp) => {
+    if (!timestamp) return 'Unknown time';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
 
   // Handle rating submission
   const handleRateNote = async (rating) => {
@@ -101,6 +245,10 @@ const NotesScreen = () => {
   // Reset rating state when viewing a new note
   const resetRatingState = () => {
     setUserRating(0);
+    setComments([]);
+    setNewComment('');
+    setEditingCommentId(null);
+    setEditingCommentText('');
   };
 
   // Handle search functionality
@@ -603,6 +751,114 @@ const NotesScreen = () => {
     return date.toLocaleDateString();
   };
 
+  // Render comments section
+  const renderCommentsSection = () => (
+    <View style={styles.commentsSection}>
+      <Text style={styles.commentsSectionTitle}>
+        Comments ({comments.length})
+      </Text>
+      
+      {/* Add comment input */}
+      <View style={styles.addCommentContainer}>
+        <TextInput
+          style={styles.commentInput}
+          placeholder="Add a comment..."
+          value={newComment}
+          onChangeText={setNewComment}
+          multiline
+          maxLength={500}
+        />
+        <TouchableOpacity
+          style={[styles.addCommentButton, (!newComment.trim() || isAddingComment) && styles.addCommentButtonDisabled]}
+          onPress={handleAddComment}
+          disabled={!newComment.trim() || isAddingComment}
+        >
+          <Ionicons 
+            name={isAddingComment ? "hourglass-outline" : "send"} 
+            size={16} 
+            color={(!newComment.trim() || isAddingComment) ? "#999" : "#007AFF"} 
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Comments list */}
+      {loadingComments ? (
+        <Text style={styles.loadingCommentsText}>Loading comments...</Text>
+      ) : comments.length > 0 ? (
+        <View style={styles.commentsList}>
+          {comments.map((comment) => (
+            <View key={comment.id} style={styles.commentCard}>
+              <View style={styles.commentHeader}>
+                <View style={styles.commentUserInfo}>
+                  <Text style={styles.commentUserName}>{comment.userName}</Text>
+                  <Text style={styles.commentTime}>{formatCommentDate(comment.createdAt)}</Text>
+                </View>
+                {comment.userId === auth.currentUser?.uid && (
+                  <View style={styles.commentActions}>
+                    <TouchableOpacity
+                      onPress={() => handleEditComment(comment)}
+                      style={styles.commentActionButton}
+                    >
+                      <Ionicons name="pencil" size={14} color="#007AFF" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteComment(comment.id)}
+                      style={styles.commentActionButton}
+                    >
+                      <Ionicons name="trash" size={14} color="#FF3B30" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+              
+              {editingCommentId === comment.id ? (
+                <View style={styles.editCommentContainer}>
+                  <TextInput
+                    style={styles.editCommentInput}
+                    value={editingCommentText}
+                    onChangeText={setEditingCommentText}
+                    multiline
+                    maxLength={500}
+                    autoFocus
+                  />
+                  <View style={styles.editCommentActions}>
+                    <TouchableOpacity
+                      onPress={handleCancelEdit}
+                      style={styles.cancelEditButton}
+                    >
+                      <Text style={styles.cancelEditText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleUpdateComment}
+                      style={[styles.saveEditButton, !editingCommentText.trim() && styles.saveEditButtonDisabled]}
+                      disabled={!editingCommentText.trim()}
+                    >
+                      <Text style={[styles.saveEditText, !editingCommentText.trim() && styles.saveEditTextDisabled]}>
+                        Save
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.commentContent}>{comment.content}</Text>
+              )}
+              
+              {comment.updatedAt && comment.updatedAt !== comment.createdAt && (
+                <Text style={styles.editedIndicator}>Edited</Text>
+              )}
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.noCommentsContainer}>
+          <Ionicons name="chatbubble-outline" size={32} color="#ccc" />
+          <Text style={styles.noCommentsText}>No comments yet</Text>
+          <Text style={styles.noCommentsSubtext}>Be the first to comment!</Text>
+        </View>
+      )}
+    </View>
+  );
+
   // --- BROWSE VIEW ---
   const renderBrowseView = () => (
     <ScrollView contentContainerStyle={styles.scrollView}>
@@ -813,7 +1069,10 @@ const NotesScreen = () => {
 
   // --- DETAIL VIEW ---
   const renderDetailView = () => (
-    <View style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => setView('browse')}>
           <Ionicons name="chevron-back" size={24} color="#007AFF" />
@@ -826,7 +1085,7 @@ const NotesScreen = () => {
         )}
       </View>
 
-      <ScrollView style={styles.section}>
+      <ScrollView style={styles.section} showsVerticalScrollIndicator={false}>
         <View style={styles.detailCard}>
           <Text style={styles.detailLabel}>Title</Text>
           <Text style={styles.detailText}>{selectedNote?.title}</Text>
@@ -870,8 +1129,11 @@ const NotesScreen = () => {
             <Text style={styles.downloadText}>View/Download File</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Comments Section */}
+        {renderCommentsSection()}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 
   // --- UPLOAD VIEW ---
@@ -1350,6 +1612,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 20,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 2 },
@@ -1380,6 +1643,177 @@ const styles = StyleSheet.create({
     color: '#fff', 
     fontSize: 16, 
     fontWeight: '600' 
+  },
+  
+  // Comments section styles
+  commentsSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  commentsSectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 16,
+  },
+  
+  // Add comment styles
+  addCommentContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 20,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  commentInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    maxHeight: 100,
+    paddingRight: 8,
+  },
+  addCommentButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f0f7ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  addCommentButtonDisabled: {
+    backgroundColor: '#f5f5f5',
+  },
+  
+  // Comments list styles
+  loadingCommentsText: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 14,
+    fontStyle: 'italic',
+    marginVertical: 20,
+  },
+  commentsList: {
+    gap: 12,
+  },
+  commentCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  commentUserInfo: {
+    flex: 1,
+  },
+  commentUserName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  commentTime: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  commentActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  commentActionButton: {
+    padding: 4,
+  },
+  commentContent: {
+    fontSize: 15,
+    color: '#333',
+    lineHeight: 20,
+  },
+  editedIndicator: {
+    fontSize: 11,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  
+  // Edit comment styles
+  editCommentContainer: {
+    marginTop: 4,
+  },
+  editCommentInput: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 15,
+    color: '#333',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    maxHeight: 100,
+  },
+  editCommentActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 8,
+  },
+  cancelEditButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  cancelEditText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  saveEditButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#007AFF',
+  },
+  saveEditButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  saveEditText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  saveEditTextDisabled: {
+    color: '#999',
+  },
+  
+  // No comments styles
+  noCommentsContainer: {
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  noCommentsText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#666',
+    marginTop: 8,
+  },
+  noCommentsSubtext: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 4,
   },
   
   uploadCard: {
