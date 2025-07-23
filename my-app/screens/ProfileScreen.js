@@ -9,11 +9,14 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { auth, db } from '../firebaseConfig';
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
+import { uploadProfilePicture, updateUserPhotoURL } from '../backend/userService';
 
 const avatarOptions = [
   'school',
@@ -40,6 +43,8 @@ const ProfileScreen = () => {
   const [meetingPreference, setMeetingPreference] = useState('In-person & Virtual');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [profilePicture, setProfilePicture] = useState(null);
+  const [uploadingPicture, setUploadingPicture] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
@@ -70,6 +75,7 @@ const ProfileScreen = () => {
         setStudyTimes(userData.studyTimes || ['Evenings', 'Weekends']);
         setMeetingPreference(userData.meetingPreference || 'In-person & Virtual');
         setSelectedAvatar(userData.selectedAvatar || 'person-circle');
+        setProfilePicture(userData.photoURL || null);
       } else {
         // Use auth data and create document
         const userData = {
@@ -81,6 +87,7 @@ const ProfileScreen = () => {
           studyTimes: ['Evenings', 'Weekends'],
           meetingPreference: 'In-person & Virtual',
           selectedAvatar: 'person-circle',
+          photoURL: '',
           createdAt: serverTimestamp(),
         };
         
@@ -95,6 +102,7 @@ const ProfileScreen = () => {
         setStudyTimes(userData.studyTimes);
         setMeetingPreference(userData.meetingPreference);
         setSelectedAvatar(userData.selectedAvatar);
+        setProfilePicture(userData.photoURL);
       }
       
     } catch (error) {
@@ -113,6 +121,144 @@ const ProfileScreen = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      // Request permission
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          'Permission Required',
+          'Please grant permission to access your photo library to upload a profile picture.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        await uploadImage(asset.uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      // Request camera permission
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          'Permission Required',
+          'Please grant permission to access your camera to take a profile picture.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Launch camera
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        await uploadImage(asset.uri);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo. Please try again.');
+    }
+  };
+
+  const uploadImage = async (imageUri) => {
+    try {
+      setUploadingPicture(true);
+      
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert('Error', 'No authenticated user found');
+        return;
+      }
+
+      // Convert image URI to blob
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+
+      // Upload to Firebase Storage
+      const downloadURL = await uploadProfilePicture(user.uid, blob);
+      
+      // Update user document with new photo URL
+      await updateUserPhotoURL(user.uid, downloadURL);
+      
+      // Update local state
+      setProfilePicture(downloadURL);
+      
+      Alert.alert('Success', 'Profile picture updated successfully!');
+      
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      Alert.alert('Error', 'Failed to upload image. Please try again.');
+    } finally {
+      setUploadingPicture(false);
+    }
+  };
+
+  const showImageOptions = () => {
+    Alert.alert(
+      'Profile Picture',
+      'Choose an option',
+      [
+        { text: 'Take Photo', onPress: takePhoto },
+        { text: 'Choose from Library', onPress: pickImage },
+        { text: 'Remove Photo', onPress: removeProfilePicture, style: 'destructive' },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const removeProfilePicture = async () => {
+    try {
+      setUploadingPicture(true);
+      
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert('Error', 'No authenticated user found');
+        return;
+      }
+
+      // Update user document to remove photo URL
+      await updateUserPhotoURL(user.uid, '');
+      
+      // Update local state
+      setProfilePicture(null);
+      
+      Alert.alert('Success', 'Profile picture removed successfully!');
+      
+    } catch (error) {
+      console.error('Error removing profile picture:', error);
+      Alert.alert('Error', 'Failed to remove profile picture. Please try again.');
+    } finally {
+      setUploadingPicture(false);
     }
   };
 
@@ -221,32 +367,55 @@ const ProfileScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Avatar Section */}
+        {/* Profile Picture Section */}
         <View style={styles.avatarSection}>
-          <Ionicons name={selectedAvatar} size={100} color="#007AFF" />
-          {isEditing && (
-          <>
-            <Text style={styles.avatarLabel}>Select Your Avatar</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.avatarPicker}>
-              {avatarOptions.map((icon) => (
-                <TouchableOpacity
-                  key={icon}
-                  onPress={() => setSelectedAvatar(icon)}
-                  style={[
-                    styles.avatarOption,
-                    selectedAvatar === icon && styles.avatarOptionSelected,
-                  ]}
-                >
-                  <Ionicons 
-                    name={icon} 
-                    size={32} 
-                    color={selectedAvatar === icon ? '#fff' : '#007AFF'} 
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </>
-        )}
+          <TouchableOpacity 
+            style={styles.profilePictureContainer}
+            onPress={isEditing ? showImageOptions : null}
+            disabled={uploadingPicture}
+          >
+            {profilePicture ? (
+              <Image source={{ uri: profilePicture }} style={styles.profilePicture} />
+            ) : (
+              <Ionicons name={selectedAvatar} size={100} color="#007AFF" />
+            )}
+            
+            {uploadingPicture && (
+              <View style={styles.uploadingOverlay}>
+                <ActivityIndicator size="small" color="#fff" />
+              </View>
+            )}
+            
+            {isEditing && !uploadingPicture && (
+              <View style={styles.editPhotoOverlay}>
+                <Ionicons name="camera" size={24} color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
+          
+          {isEditing && !profilePicture && (
+            <>
+              <Text style={styles.avatarLabel}>Select Your Avatar</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.avatarPicker}>
+                {avatarOptions.map((icon) => (
+                  <TouchableOpacity
+                    key={icon}
+                    onPress={() => setSelectedAvatar(icon)}
+                    style={[
+                      styles.avatarOption,
+                      selectedAvatar === icon && styles.avatarOptionSelected,
+                    ]}
+                  >
+                    <Ionicons 
+                      name={icon} 
+                      size={32} 
+                      color={selectedAvatar === icon ? '#fff' : '#007AFF'} 
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </>
+          )}
         </View>
 
         {/* Name Section */}
@@ -545,6 +714,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
     marginBottom: 30,
+  },
+  profilePictureContainer: {
+    position: 'relative',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    marginBottom: 10,
+  },
+  profilePicture: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editPhotoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
   },
   avatarLabel: {
     fontSize: 16,
