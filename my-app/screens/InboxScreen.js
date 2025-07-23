@@ -12,10 +12,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../firebaseConfig';
 import { db } from '../firebaseConfig';
-import { collection, query, where, onSnapshot, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, orderBy, limit, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { getAcceptedPartners } from '../backend/partnerService';
 import { getOrCreateChat, getUnreadCount } from '../backend/chatService';
+import { Swipeable } from 'react-native-gesture-handler';
 
 const InboxScreen = () => {
   const [threads, setThreads] = useState([]);
@@ -99,10 +100,12 @@ const InboxScreen = () => {
             id: chatDoc.id,
             name: userName,
             lastMessage: lastMessage?.text || 'No messages yet',
-            timestamp: lastMessage?.sentAt?.toDate()?.toLocaleTimeString() || '',
+            timestamp: lastMessage?.sentAt?.toDate()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '',
             otherUid: otherUid,
             unreadCount: unreadCount,
+            course: chatData.course || '',
           };
+          
         } catch (error) {
           console.error('Error processing chat:', chatDoc.id, error);
           return null;
@@ -131,6 +134,24 @@ const InboxScreen = () => {
     }
   };
 
+  const handleDeleteChat = async (chatId) => {
+    try {
+      const messagesRef = collection(db, 'chats', chatId, 'messages');
+      const messagesSnapshot = await getDocs(messagesRef);
+      const deletePromises = messagesSnapshot.docs.map((msgDoc) =>
+        deleteDoc(doc(db, 'chats', chatId, 'messages', msgDoc.id))
+      );
+      await Promise.all(deletePromises);
+  
+      await deleteDoc(doc(db, 'chats', chatId));
+  
+      setThreads(prev => prev.filter(thread => thread.id !== chatId));
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      Alert.alert('Error', 'Failed to delete the chat.');
+    }
+  };
+  
   const startChatWithPartner = async (partner) => {
     try {
       console.log('Starting chat with partner:', partner.partnerName);
@@ -151,35 +172,60 @@ const InboxScreen = () => {
     }
   };
 
-  const renderExistingThread = ({ item }) => (
-    <TouchableOpacity
-      style={styles.threadItem}
-      onPress={() => navigation.navigate('ChatThread', { thread: item })}
-    >
-      <View style={styles.avatarContainer}>
-        <Ionicons name="person-circle-outline" size={40} color="#007AFF" />
-        {item.unreadCount > 0 && (
-          <View style={styles.notificationBadge}>
-            <Text style={styles.notificationText}>
-              {item.unreadCount > 9 ? '9+' : item.unreadCount}
+  const renderExistingThread = ({ item }) => {
+    const renderRightActions = () => (
+      <TouchableOpacity
+        style={{ backgroundColor: '#FF3B30', justifyContent: 'center', alignItems: 'center', width: 60 }}
+        onPress={() => confirmDelete(item.id)}
+      >
+        <Ionicons name="close" size={28} color="#fff" />
+      </TouchableOpacity>
+    );
+  
+    const confirmDelete = (chatId) => {
+      Alert.alert(
+        'Delete Chat',
+        'Are you sure you want to delete this chat?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: () => handleDeleteChat(chatId) }
+        ]
+      );
+    };
+  
+    return (
+      <Swipeable renderRightActions={renderRightActions}>
+        <TouchableOpacity
+          style={styles.threadItem}
+          onPress={() => navigation.navigate('ChatThread', { thread: item })}
+          onLongPress={() => confirmDelete(item.id)}
+        >
+          <View style={styles.avatarContainer}>
+            <Ionicons name="person-circle-outline" size={40} color="#007AFF" />
+            {item.unreadCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationText}>
+                  {item.unreadCount > 9 ? '9+' : item.unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={[styles.threadName, item.unreadCount > 0 && styles.unreadThreadName]}>
+              {item.name}
+            </Text>
+            <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.unreadLastMessage]}>
+              {item.lastMessage}
             </Text>
           </View>
-        )}
-      </View>
-      <View style={{ flex: 1, marginLeft: 10 }}>
-        <Text style={[styles.threadName, item.unreadCount > 0 && styles.unreadThreadName]}>
-          {item.name}
-        </Text>
-        <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.unreadLastMessage]}>
-          {item.lastMessage}
-        </Text>
-      </View>
-      <View style={styles.timestampContainer}>
-        <Text style={styles.timestamp}>{item.timestamp}</Text>
-        {item.unreadCount > 0 && <View style={styles.unreadDot} />}
-      </View>
-    </TouchableOpacity>
-  );
+          <View style={styles.timestampContainer}>
+            <Text style={styles.timestamp}>{item.timestamp}</Text>
+            {item.unreadCount > 0 && <View style={styles.unreadDot} />}
+          </View>
+        </TouchableOpacity>
+      </Swipeable>
+    );
+  };  
 
   const renderPartnerItem = ({ item }) => (
     <TouchableOpacity

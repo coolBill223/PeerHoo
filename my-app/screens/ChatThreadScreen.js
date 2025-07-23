@@ -11,8 +11,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebaseConfig';
-import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import {
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  serverTimestamp,
+} from 'firebase/firestore';
 import { markChatAsRead } from '../backend/chatService';
+import { getPartnersForCourseWithNames } from '../backend/partnerService';
 
 const ChatThreadScreen = ({ route, navigation }) => {
   const { thread } = route.params;
@@ -83,7 +91,7 @@ const ChatThreadScreen = ({ route, navigation }) => {
     <View
       style={{
         alignSelf: item.sender === 'user' ? 'flex-end' : 'flex-start',
-        backgroundColor: item.senderId === 'system' ? '#f0f0f0' : 
+        backgroundColor: item.senderId === 'system' ? '#f0f0f0' :
                         item.sender === 'user' ? '#007AFF' : '#e5e5ea',
         borderRadius: 16,
         marginVertical: 4,
@@ -92,20 +100,20 @@ const ChatThreadScreen = ({ route, navigation }) => {
         maxWidth: '75%',
       }}
     >
-      <Text style={{ 
-        color: item.senderId === 'system' ? '#666' : 
-               item.sender === 'user' ? '#fff' : '#000', 
+      <Text style={{
+        color: item.senderId === 'system' ? '#666' :
+               item.sender === 'user' ? '#fff' : '#000',
         fontSize: 16,
-        fontStyle: item.senderId === 'system' ? 'italic' : 'normal'
+        fontStyle: item.senderId === 'system' ? 'italic' : 'normal',
       }}>
         {item.text}
       </Text>
       {item.senderId !== 'system' && (
-        <Text style={{ 
-          fontSize: 10, 
-          color: item.sender === 'user' ? '#eee' : '#666', 
-          marginTop: 4, 
-          textAlign: 'right' 
+        <Text style={{
+          fontSize: 10,
+          color: item.sender === 'user' ? '#eee' : '#666',
+          marginTop: 4,
+          textAlign: 'right',
         }}>
           {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
@@ -114,48 +122,52 @@ const ChatThreadScreen = ({ route, navigation }) => {
   );
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={90}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10 }}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#007AFF" />
-          </TouchableOpacity>
-          <Text style={{ fontSize: 20, fontWeight: '600', marginLeft: 10 }}>{thread.name}</Text>
-        </View>
-
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderMessage}
-          contentContainerStyle={{ paddingBottom: 80 }}
-        />
-
-        <View style={{ flexDirection: 'row', padding: 10, backgroundColor: '#fff' }}>
-          <TextInput
-            value={message}
-            onChangeText={setMessage}
-            placeholder="Type a message..."
-            style={{
-              flex: 1,
-              backgroundColor: '#f1f1f1',
-              borderRadius: 20,
-              paddingHorizontal: 15,
-              paddingVertical: 10,
-              fontSize: 16,
-              marginRight: 10,
-            }}
+        <View style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessage}
+            contentContainerStyle={{ paddingBottom: 100 }}
           />
-          <TouchableOpacity onPress={handleSend} style={{ backgroundColor: '#007AFF', padding: 10, borderRadius: 20 }}>
-            <Ionicons name="send" size={20} color="#fff" />
-          </TouchableOpacity>
+  
+          <View style={{
+            flexDirection: 'row',
+            padding: 10,
+            backgroundColor: '#fff',
+            alignItems: 'flex-end',
+          }}>
+            <TextInput
+              value={message}
+              onChangeText={setMessage}
+              placeholder="Type a message..."
+              style={{
+                flex: 1,
+                backgroundColor: '#f1f1f1',
+                borderRadius: 20,
+                paddingHorizontal: 15,
+                paddingVertical: 10,
+                fontSize: 16,
+                marginRight: 10,
+              }}
+            />
+            <TouchableOpacity
+              onPress={handleSend}
+              style={{ backgroundColor: '#007AFF', padding: 10, borderRadius: 20 }}
+            >
+              <Ionicons name="send" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
+  );  
 };
 
 export default ChatThreadScreen;
