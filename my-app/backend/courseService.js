@@ -48,5 +48,6 @@ export const getCourseSections = async (subject, catalog) => {
     meetDays:    c.meetings?.[0]?.days ?? 'TBA',
     startTime:   formatTime(c.meetings?.[0]?.start_time),
     endTime:     formatTime(c.meetings?.[0]?.end_time),
+    instructor:  c.meetings?.[0]?.instructor?.name ?? 'TBA',
   }));
 };

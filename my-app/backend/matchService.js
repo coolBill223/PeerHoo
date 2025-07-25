@@ -58,6 +58,7 @@ export const sendMatchRequest = async ({
   studyTime,
   meetingPreference,
   bio,
+  professorName
 }) => {
   // Get current user info to store with the match request
   const userInfo = await getCurrentUserInfo();
@@ -68,6 +69,7 @@ export const sendMatchRequest = async ({
     studyTime,
     meetingPreference,
     bio,
+    professorName: professorName || '',
     receiverId: null,
     status: 'pending',
     createdAt: serverTimestamp(),

@@ -312,3 +312,53 @@ export const refreshAllPartnershipNames = async (uid) => {
     };
   }
 };
+
+/**
+ * blocking partners
+ */
+export const blockPartner = async (partnershipId, uid) => {
+  const ref = doc(db, 'partners', partnershipId);
+  const docSnap = await getDoc(ref);
+  if (!docSnap.exists()) throw new Error('Partnership not found');
+
+  const data = docSnap.data();
+  const blockedBy = data.blockedBy || [];
+
+  if (!blockedBy.includes(uid)) {
+    blockedBy.push(uid);
+    await updateDoc(ref, { blockedBy });
+  }
+};
+
+/**
+ * check if the partner is blocked or not
+ */
+export const isPartnerBlocked = async (partnershipId, uid) => {
+  const ref = doc(db, 'partners', partnershipId);
+  const docSnap = await getDoc(ref);
+  if (!docSnap.exists()) return false;
+
+  const data = docSnap.data();
+  const blockedBy = data.blockedBy || [];
+  return blockedBy.includes(uid);
+};
+
+/**
+ * report system
+ */
+export const reportPartner = async (partnershipId, reporterId, reason) => {
+  const ref = doc(db, 'partners', partnershipId);
+  const docSnap = await getDoc(ref);
+  if (!docSnap.exists()) throw new Error('Partnership not found');
+
+  const data = docSnap.data();
+  const reports = data.reports || [];
+
+  reports.push({
+    reporterId,
+    reason,
+    reportedAt: serverTimestamp(),
+  });
+
+  await updateDoc(ref, { reports });
+};
