@@ -20,6 +20,8 @@ import ChatScreen from './screens/ChatScreen';
 import NotesScreen from './screens/NotesScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import PartnerProfileScreen from './screens/PartnerProfileScreen';
+import BlockedPartnersScreen from './screens/BlockedPartners';
+import { getAcceptedPartners, isPartnerBlocked } from './backend/partnerService';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -69,6 +71,32 @@ function MainTabNavigator() {
       return;
     }
 
+    const calculateBlockedPartnerIds = async () => {
+      try {
+        // Get blocked partners first
+        const allPartners = await getAcceptedPartners(auth.currentUser.uid);
+        const partnerStatusPromises = allPartners.map(async (partner) => {
+          const isBlocked = await isPartnerBlocked(partner.id, auth.currentUser.uid);
+          return {
+            ...partner,
+            isBlocked
+          };
+        });
+        
+        const partnersWithStatus = await Promise.all(partnerStatusPromises);
+        const blockedPartnerIds = new Set(
+          partnersWithStatus
+            .filter(p => p.isBlocked)
+            .map(p => p.partnerId)
+        );
+
+        return blockedPartnerIds;
+      } catch (error) {
+        console.error('Error getting blocked partners:', error);
+        return new Set();
+      }
+    };
+
     // Set up real-time listener for chats
     const chatsQuery = query(
       collection(db, 'chats'), 
@@ -82,15 +110,26 @@ function MainTabNavigator() {
           return;
         }
 
-        // Get unread count for each chat
+        // Get blocked partner IDs
+        const blockedPartnerIds = await calculateBlockedPartnerIds();
+
+        // Get unread count for each chat, excluding blocked partners
         const unreadPromises = snapshot.docs.map(async (chatDoc) => {
+          const chatData = chatDoc.data();
+          const otherUserId = chatData.participants.find(id => id !== auth.currentUser.uid);
+          
+          // If the other user is blocked, don't count unread messages
+          if (blockedPartnerIds.has(otherUserId)) {
+            return 0;
+          }
+          
           return await getUnreadCount(chatDoc.id, auth.currentUser.uid);
         });
         
         const unreadCounts = await Promise.all(unreadPromises);
         const totalUnread = unreadCounts.reduce((sum, count) => sum + count, 0);
         
-        console.log('Navigation: Total unread messages:', totalUnread);
+        console.log('Navigation: Total unread messages (excluding blocked):', totalUnread);
         setTotalUnreadMessages(totalUnread);
       } catch (error) {
         console.error('Error calculating unread messages for navigation:', error);
@@ -164,7 +203,14 @@ function MainStackNavigator() {
         name="PartnerProfile" 
         component={PartnerProfileScreen}
         options={{
-          presentation: 'card', // Use 'modal' for iOS-style modal presentation
+          presentation: 'card',
+        }}
+      />
+      <Stack.Screen 
+        name="BlockedPartners" 
+        component={BlockedPartnersScreen}
+        options={{
+          presentation: 'card',
         }}
       />
     </Stack.Navigator>

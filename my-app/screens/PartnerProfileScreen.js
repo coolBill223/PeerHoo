@@ -8,10 +8,14 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getOrCreateChat } from '../backend/chatService';
 import { getUserInfo } from '../backend/userService';
+import { blockPartner, reportPartner, isPartnerBlocked, unblockPartner } from '../backend/partnerService';
 import { auth } from '../firebaseConfig';
 
 const PartnerProfileScreen = ({ route, navigation }) => {
@@ -21,9 +25,23 @@ const PartnerProfileScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [reportingInProgress, setReportingInProgress] = useState(false);
+
+  const reportReasons = [
+    'Inappropriate behavior',
+    'Harassment',
+    'Fake profile',
+    'No-show to study sessions',
+    'Spam or irrelevant messages',
+    'Other'
+  ];
 
   useEffect(() => {
     loadFullPartnerInfo();
+    checkBlockStatus();
   }, [partner]);
 
   const loadFullPartnerInfo = async () => {
@@ -56,6 +74,127 @@ const PartnerProfileScreen = ({ route, navigation }) => {
       setPartnerData(partner);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkBlockStatus = async () => {
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser && partner.id) {
+        const blocked = await isPartnerBlocked(partner.id, currentUser.uid);
+        setIsBlocked(blocked);
+      }
+    } catch (error) {
+      console.error('Error checking block status:', error);
+    }
+  };
+
+  const handleBlockPartner = async () => {
+    Alert.alert(
+      'Block Partner',
+      `Are you sure you want to block ${partnerData.partnerName || 'this partner'}? This will prevent them from contacting you and you won't see their messages.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const currentUser = auth.currentUser;
+              if (currentUser && partner.id) {
+                await blockPartner(partner.id, currentUser.uid);
+                setIsBlocked(true);
+                Alert.alert(
+                  'Partner Blocked',
+                  'You have successfully blocked this partner. You can unblock them anytime from this screen.',
+                  [
+                    {
+                      text: 'OK'
+                    }
+                  ]
+                );
+              }
+            } catch (error) {
+              console.error('Error blocking partner:', error);
+              Alert.alert('Error', 'Failed to block partner. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleUnblockPartner = async () => {
+    Alert.alert(
+      'Unblock Partner',
+      `Are you sure you want to unblock ${partnerData.partnerName || 'this partner'}? They will be able to contact you again.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Unblock',
+          style: 'default',
+          onPress: async () => {
+            try {
+              const currentUser = auth.currentUser;
+              if (currentUser && partner.id) {
+                await unblockPartner(partner.id, currentUser.uid);
+                setIsBlocked(false);
+                Alert.alert(
+                  'Partner Unblocked',
+                  'You have successfully unblocked this partner. You can now chat with them again.',
+                  [
+                    {
+                      text: 'OK'
+                    }
+                  ]
+                );
+              }
+            } catch (error) {
+              console.error('Error unblocking partner:', error);
+              Alert.alert('Error', 'Failed to unblock partner. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleReportPartner = async () => {
+    if (!reportReason.trim()) {
+      Alert.alert('Error', 'Please select or enter a reason for reporting.');
+      return;
+    }
+
+    setReportingInProgress(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser && partner.id) {
+        await reportPartner(partner.id, currentUser.uid, reportReason);
+        setShowReportModal(false);
+        setReportReason('');
+        
+        Alert.alert(
+          'Report Submitted',
+          'Thank you for your report. Our team will review it and take appropriate action if necessary.',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack()
+            }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error reporting partner:', error);
+      Alert.alert('Error', 'Failed to submit report. Please try again.');
+    } finally {
+      setReportingInProgress(false);
     }
   };
 
@@ -99,6 +238,90 @@ const PartnerProfileScreen = ({ route, navigation }) => {
     }
   };
 
+  const renderReportModal = () => (
+    <Modal
+      visible={showReportModal}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowReportModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Report Partner</Text>
+            <TouchableOpacity 
+              onPress={() => setShowReportModal(false)}
+              style={styles.modalCloseButton}
+            >
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+          
+          <Text style={styles.modalSubtitle}>
+            Please select a reason for reporting this partner:
+          </Text>
+          
+          <ScrollView style={styles.reasonsList}>
+            {reportReasons.map((reason, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.reasonItem,
+                  reportReason === reason && styles.reasonItemSelected
+                ]}
+                onPress={() => setReportReason(reason)}
+              >
+                <Text style={[
+                  styles.reasonText,
+                  reportReason === reason && styles.reasonTextSelected
+                ]}>
+                  {reason}
+                </Text>
+                {reportReason === reason && (
+                  <Ionicons name="checkmark" size={20} color="#007AFF" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          
+          {reportReason === 'Other' && (
+            <TextInput
+              style={styles.customReasonInput}
+              placeholder="Please describe the issue..."
+              multiline
+              value={reportReason === 'Other' ? '' : reportReason}
+              onChangeText={(text) => setReportReason(text)}
+            />
+          )}
+          
+          <View style={styles.modalButtons}>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setShowReportModal(false)}
+            >
+              <Text style={styles.modalCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.modalSubmitButton,
+                (!reportReason.trim() || reportingInProgress) && styles.modalSubmitButtonDisabled
+              ]}
+              onPress={handleReportPartner}
+              disabled={!reportReason.trim() || reportingInProgress}
+            >
+              {reportingInProgress ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.modalSubmitButtonText}>Submit Report</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -122,42 +345,96 @@ const PartnerProfileScreen = ({ route, navigation }) => {
             <Ionicons name="arrow-back" size={24} color="#007AFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Partner Profile</Text>
-          <View style={styles.headerSpacer} />
+          <TouchableOpacity 
+            style={styles.moreButton}
+            onPress={() => {
+              const actions = [
+                {
+                  text: 'Report Partner',
+                  onPress: () => setShowReportModal(true),
+                  style: 'destructive'
+                }
+              ];
+
+              if (isBlocked) {
+                actions.push({
+                  text: 'Unblock Partner',
+                  onPress: handleUnblockPartner,
+                  style: 'default'
+                });
+              } else {
+                actions.push({
+                  text: 'Block Partner',
+                  onPress: handleBlockPartner,
+                  style: 'destructive'
+                });
+              }
+
+              actions.push({
+                text: 'Cancel',
+                style: 'cancel'
+              });
+
+              Alert.alert(
+                'Partner Actions',
+                'What would you like to do?',
+                actions
+              );
+            }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={24} color="#007AFF" />
+          </TouchableOpacity>
         </View>
+
+        {/* Blocked Status Banner */}
+        {isBlocked && (
+          <View style={styles.blockedBanner}>
+            <Ionicons name="ban" size={20} color="#FF3B30" />
+            <Text style={styles.blockedText}>This partner has been blocked</Text>
+            <TouchableOpacity
+              style={styles.unblockQuickButton}
+              onPress={handleUnblockPartner}
+            >
+              <Text style={styles.unblockQuickButtonText}>Unblock</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Avatar + Chat Icon + Name */}
         <View style={styles.avatarSection}>
           <View style={styles.avatarContainer}>
             {renderProfileImage()}
-            <TouchableOpacity
-              onPress={async () => {
-                const currentUser = auth.currentUser;
-                const partnerId = partnerData?.partnerId ?? partnerData?.id;
-                if (!currentUser || !partnerId) return;
+            {!isBlocked && (
+              <TouchableOpacity
+                onPress={async () => {
+                  const currentUser = auth.currentUser;
+                  const partnerId = partnerData?.partnerId ?? partnerData?.id;
+                  if (!currentUser || !partnerId) return;
 
-                try {
-                  const chatId = await getOrCreateChat(currentUser.uid, partnerId);
+                  try {
+                    const chatId = await getOrCreateChat(currentUser.uid, partnerId);
 
-                  navigation.navigate('MainTabs', {
-                    screen: 'Chat',
-                    params: {
-                      screen: 'ChatThread',
+                    navigation.navigate('MainTabs', {
+                      screen: 'Chat',
                       params: {
-                        thread: {
-                          id: chatId,
-                          name: partnerData.partnerName || partnerData.name,
+                        screen: 'ChatThread',
+                        params: {
+                          thread: {
+                            id: chatId,
+                            name: partnerData.partnerName || partnerData.name,
+                          },
                         },
                       },
-                    },
-                  });
-                } catch (error) {
-                  console.error('Failed to start chat:', error);
-                }
-              }}
-              style={styles.chatIconButton}
-            >
-              <Ionicons name="chatbubble-ellipses-outline" size={20} color="#fff" />
-            </TouchableOpacity>
+                    });
+                  } catch (error) {
+                    console.error('Failed to start chat:', error);
+                  }
+                }}
+                style={styles.chatIconButton}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
           </View>
           <Text style={styles.name}>
             {partnerData.partnerName || partnerData.name || 'Study Partner'}
@@ -299,10 +576,19 @@ const PartnerProfileScreen = ({ route, navigation }) => {
           <Text style={styles.sectionTitle}>Partnership Status</Text>
           <View style={styles.statusContainer}>
             <View style={styles.statusItem}>
-              <Ionicons name="checkmark-circle" size={24} color="#34C759" />
+              <Ionicons 
+                name={isBlocked ? "ban" : "checkmark-circle"} 
+                size={24} 
+                color={isBlocked ? "#FF3B30" : "#34C759"} 
+              />
               <View style={styles.statusText}>
                 <Text style={styles.statusLabel}>Status</Text>
-                <Text style={styles.statusValue}>Active Study Partner</Text>
+                <Text style={[
+                  styles.statusValue,
+                  isBlocked && { color: '#FF3B30' }
+                ]}>
+                  {isBlocked ? 'Blocked Partner' : 'Active Study Partner'}
+                </Text>
               </View>
             </View>
             
@@ -332,7 +618,40 @@ const PartnerProfileScreen = ({ route, navigation }) => {
           </View>
         </View>
 
+        {/* Action Buttons Section */}
+        <View style={styles.section}>
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={styles.reportButton}
+              onPress={() => setShowReportModal(true)}
+            >
+              <Ionicons name="flag" size={18} color="#FF3B30" />
+              <Text style={styles.reportButtonText}>Report Partner</Text>
+            </TouchableOpacity>
+            
+            {isBlocked ? (
+              <TouchableOpacity
+                style={styles.unblockButton}
+                onPress={handleUnblockPartner}
+              >
+                <Ionicons name="checkmark-circle" size={18} color="#34C759" />
+                <Text style={styles.unblockButtonText}>Unblock Partner</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.blockButton}
+                onPress={handleBlockPartner}
+              >
+                <Ionicons name="ban" size={18} color="#FF3B30" />
+                <Text style={styles.blockButtonText}>Block Partner</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
       </ScrollView>
+      
+      {renderReportModal()}
     </SafeAreaView>
   );
 };
@@ -367,8 +686,9 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: -8,
   },
-  headerSpacer: {
-    width: 40,
+  moreButton: {
+    padding: 8,
+    marginRight: -8,
   },
   headerTitle: {
     fontSize: 20,
@@ -376,6 +696,37 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     textAlign: 'center',
     flex: 1,
+  },
+  blockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffebee',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginHorizontal: 20,
+    marginTop: 15,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF3B30',
+  },
+  blockedText: {
+    fontSize: 14,
+    color: '#FF3B30',
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1,
+  },
+  unblockQuickButton: {
+    backgroundColor: '#34C759',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  unblockQuickButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   avatarSection: {
     alignItems: 'center',
@@ -588,6 +939,167 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '600',
     marginTop: 2,
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  reportButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#FF3B30',
+    gap: 8,
+  },
+  reportButtonText: {
+    color: '#FF3B30',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  blockButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  blockButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  unblockButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#34C759',
+    borderRadius: 12,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  unblockButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  reasonsList: {
+    maxHeight: 300,
+  },
+  reasonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  reasonItemSelected: {
+    backgroundColor: '#f0f8ff',
+    borderColor: '#007AFF',
+  },
+  reasonText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+    flex: 1,
+  },
+  reasonTextSelected: {
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  customReasonInput: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    fontSize: 16,
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  modalCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  modalSubmitButton: {
+    flex: 1,
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  modalSubmitButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  modalSubmitButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
 

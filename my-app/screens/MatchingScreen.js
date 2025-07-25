@@ -12,13 +12,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
-  Keyboard
+  Keyboard,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getCourseSections } from '../backend/courseService';
 import { sendMatchRequest, getIncomingMatchRequests, getMyMatchRequests, getOpenMatchRequests, applyToMatchRequest,
   acceptMatchRequest, rejectMatchRequest } from '../backend/matchService';
-import { getPartnersForCourseWithNames } from '../backend/partnerService';
+import { getPartnersForCourseWithNames, blockPartner, reportPartner, isPartnerBlocked } from '../backend/partnerService';
 import { auth } from '../firebaseConfig';
 
 const MatchingScreen = ({ navigation }) => {
@@ -35,11 +36,13 @@ const MatchingScreen = ({ navigation }) => {
   const [myCourses, setMyCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState('');
   const [currentPartners, setCurrentPartners] = useState([]);
+  const [blockedPartners, setBlockedPartners] = useState([]);
   const [loadingPartners, setLoadingPartners] = useState(false);
   const [incoming, setIncoming] = useState([]);
   const [loadingIncoming, setLoadingIncoming] = useState(false);
   const [open, setOpen] = useState([]);
   const [loadingOpen, setLoadingOpen] = useState(false);
+  
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -53,9 +56,24 @@ const MatchingScreen = ({ navigation }) => {
   });
   const [sections, setSections] = useState([]);
   const [loadingSections, setLoadingSections] = useState(false);
+  
+  // Report/Block modal state
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportReason, setReportReason] = useState('');
+  const [reportingInProgress, setReportingInProgress] = useState(false);
+  
   const meetingOptions = ['In-person', 'Virtual', 'Both'];
+  const reportReasons = [
+    'Inappropriate behavior',
+    'Harassment',
+    'Fake profile',
+    'No-show to study sessions',
+    'Spam or irrelevant messages',
+    'Other'
+  ];
 
-  //helper
+  //helper functions
   const loadIncoming = async () => {
     try {
       setLoadingIncoming(true);
@@ -84,8 +102,25 @@ const MatchingScreen = ({ navigation }) => {
     if (!course || !uid) return;
     try {
       setLoadingPartners(true);
-      const partners = await getPartnersForCourseWithNames(uid, course);
-      setCurrentPartners(partners);
+      const allPartners = await getPartnersForCourseWithNames(uid, course);
+      
+      // Check block status for each partner
+      const partnerStatusPromises = allPartners.map(async (partner) => {
+        const isBlocked = await isPartnerBlocked(partner.id, uid);
+        return {
+          ...partner,
+          isBlocked
+        };
+      });
+      
+      const partnersWithStatus = await Promise.all(partnerStatusPromises);
+      
+      // Separate blocked and unblocked partners
+      const activePartners = partnersWithStatus.filter(p => !p.isBlocked);
+      const blocked = partnersWithStatus.filter(p => p.isBlocked);
+      
+      setCurrentPartners(activePartners);
+      setBlockedPartners(blocked);
     } catch (error) {
       console.error('Failed to load current partners:', error);
     } finally {
@@ -103,6 +138,96 @@ const MatchingScreen = ({ navigation }) => {
     } catch (e) {
       Alert.alert('Error', e.message);
     }
+  };
+
+  const handleReportUser = async () => {
+    if (!reportReason.trim()) {
+      Alert.alert('Error', 'Please select or enter a reason for reporting.');
+      return;
+    }
+
+    setReportingInProgress(true);
+    try {
+      if (reportTarget && reportTarget.partnershipId) {
+        await reportPartner(reportTarget.partnershipId, uid, reportReason);
+        setShowReportModal(false);
+        setReportReason('');
+        setReportTarget(null);
+        
+        Alert.alert(
+          'Report Submitted',
+          'Thank you for your report. Our team will review it and take appropriate action if necessary.'
+        );
+      }
+    } catch (error) {
+      console.error('Error reporting user:', error);
+      Alert.alert('Error', 'Failed to submit report. Please try again.');
+    } finally {
+      setReportingInProgress(false);
+    }
+  };
+
+  const handleBlockUser = async (partner) => {
+    Alert.alert(
+      'Block User',
+      `Are you sure you want to block ${partner.partnerName || 'this user'}? This will prevent them from contacting you.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (partner.id) {
+                await blockPartner(partner.id, uid);
+                Alert.alert('User Blocked', 'You have successfully blocked this user.');
+                loadCurrentPartners(selectedCourse);
+              }
+            } catch (error) {
+              console.error('Error blocking user:', error);
+              Alert.alert('Error', 'Failed to block user. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handlePartnerLongPress = (partner) => {
+    Alert.alert(
+      'Partner Actions',
+      `What would you like to do with ${partner.partnerName || 'this partner'}?`,
+      [
+        {
+          text: 'Report User',
+          onPress: () => {
+            setReportTarget({
+              partnershipId: partner.id,
+              partnerName: partner.partnerName
+            });
+            setShowReportModal(true);
+          },
+          style: 'destructive'
+        },
+        {
+          text: 'Block User',
+          onPress: () => handleBlockUser(partner),
+          style: 'destructive'
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
+    );
+  };
+
+  const handleViewBlockedPartners = () => {
+    const allBlockedPartners = [...blockedPartners];
+    navigation.navigate('BlockedPartners', { 
+      blockedPartners: allBlockedPartners, 
+      onPartnersUpdated: () => loadCurrentPartners(selectedCourse)
+    });
   };
 
   useEffect(() => {
@@ -149,6 +274,7 @@ const MatchingScreen = ({ navigation }) => {
         catalog: '',
         courseCode: '',
         availability: '',
+        studyTime: '',
         goals: '',
         meeting: 'In-person',
       });
@@ -158,6 +284,90 @@ const MatchingScreen = ({ navigation }) => {
       Alert.alert('Error', e.message);
     }
   };
+
+  const renderReportModal = () => (
+    <Modal
+      visible={showReportModal}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowReportModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Report User</Text>
+            <TouchableOpacity 
+              onPress={() => setShowReportModal(false)}
+              style={styles.modalCloseButton}
+            >
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+          
+          <Text style={styles.modalSubtitle}>
+            Please select a reason for reporting {reportTarget?.partnerName || 'this user'}:
+          </Text>
+          
+          <ScrollView style={styles.reasonsList}>
+            {reportReasons.map((reason, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.reasonItem,
+                  reportReason === reason && styles.reasonItemSelected
+                ]}
+                onPress={() => setReportReason(reason)}
+              >
+                <Text style={[
+                  styles.reasonText,
+                  reportReason === reason && styles.reasonTextSelected
+                ]}>
+                  {reason}
+                </Text>
+                {reportReason === reason && (
+                  <Ionicons name="checkmark" size={20} color="#007AFF" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          
+          {reportReason === 'Other' && (
+            <TextInput
+              style={styles.customReasonInput}
+              placeholder="Please describe the issue..."
+              multiline
+              value={reportReason === 'Other' ? '' : reportReason}
+              onChangeText={(text) => setReportReason(text)}
+            />
+          )}
+          
+          <View style={styles.modalButtons}>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setShowReportModal(false)}
+            >
+              <Text style={styles.modalCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.modalSubmitButton,
+                (!reportReason.trim() || reportingInProgress) && styles.modalSubmitButtonDisabled
+              ]}
+              onPress={handleReportUser}
+              disabled={!reportReason.trim() || reportingInProgress}
+            >
+              {reportingInProgress ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.modalSubmitButtonText}>Submit Report</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 
   if (showForm) {
     return (
@@ -259,6 +469,9 @@ const MatchingScreen = ({ navigation }) => {
                           </Text>
                           <Text style={[styles.secSubtxt, chosen && styles.secSubtxtActive]}>
                             {s.meetDays} {s.startTime}-{s.endTime} · {s.component}
+                          </Text>
+                          <Text style={[styles.secInstructorTxt, chosen && styles.secInstructorTxtActive]}>
+                            Professor: {s.instructor}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -382,7 +595,33 @@ const MatchingScreen = ({ navigation }) => {
         {/* Current Partners for Selected Course */}
         {selectedCourse !== '' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Current Partners - {selectedCourse}</Text>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Active Partners - {selectedCourse}</Text>
+              {blockedPartners.length > 0 && (
+                <TouchableOpacity 
+                  style={styles.blockedButton}
+                  onPress={handleViewBlockedPartners}
+                >
+                  <Ionicons name="ban" size={16} color="#FF3B30" />
+                  <Text style={styles.blockedButtonText}>{blockedPartners.length}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Blocked Partners Notice */}
+            {blockedPartners.length > 0 && (
+              <TouchableOpacity 
+                style={styles.blockedNotice}
+                onPress={handleViewBlockedPartners}
+              >
+                <Ionicons name="ban" size={18} color="#FF3B30" />
+                <Text style={styles.blockedNoticeText}>
+                  {blockedPartners.length} blocked partner{blockedPartners.length > 1 ? 's' : ''} for this course
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color="#FF3B30" />
+              </TouchableOpacity>
+            )}
+
             {loadingPartners ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color="#007AFF" />
@@ -391,7 +630,7 @@ const MatchingScreen = ({ navigation }) => {
             ) : currentPartners.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="people-outline" size={48} color="#ccc" />
-                <Text style={styles.emptyStateText}>No current partners</Text>
+                <Text style={styles.emptyStateText}>No active partners</Text>
                 <Text style={styles.emptyStateSubtext}>Find study partners for this course below</Text>
               </View>
             ) : (
@@ -400,6 +639,7 @@ const MatchingScreen = ({ navigation }) => {
                   key={partner.id}
                   style={styles.partnerCard}
                   onPress={() => navigation.navigate('PartnerProfile', { partner })}
+                  onLongPress={() => handlePartnerLongPress(partner)}
                 >
                   <View style={styles.avatarContainer}>
                     <Ionicons name="person" size={24} color="#007AFF" />
@@ -417,7 +657,7 @@ const MatchingScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Incoming Applications section - PROPERLY FIXED */}
+        {/* Incoming Applications section */}
         {(incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null && m.status === 'pending').length > 0 || loadingIncoming) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Incoming Applications</Text>
@@ -425,7 +665,7 @@ const MatchingScreen = ({ navigation }) => {
             {loadingIncoming && <ActivityIndicator />}
 
             {incoming
-              .filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null && m.status === 'pending') // YOUR requests that got applications
+              .filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId !== null && m.status === 'pending')
               .map((m) => {
                 return (
                   <View key={m.id} style={styles.matchCard}>
@@ -441,7 +681,7 @@ const MatchingScreen = ({ navigation }) => {
                       </Text>
                     </View>
 
-                    {/* Action buttons - for applications to YOUR requests */}
+                    {/* Action buttons */}
                     <View style={{ flexDirection: 'row', marginLeft: 10 }}>
                       <TouchableOpacity
                         style={styles.acceptBtn}
@@ -475,7 +715,7 @@ const MatchingScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* My Applications to Others - UPDATED TO SHOW REJECTED APPLICATIONS */}
+        {/* My Applications to Others */}
         {(incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.receiverId === uid).length > 0) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>My Applications</Text>
@@ -522,7 +762,7 @@ const MatchingScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* My Open Posted Requests section - UPDATED */}
+        {/* My Open Posted Requests section */}
         {incoming.filter((m) => (m.course === selectedCourse || selectedCourse === '') && m.senderId === uid && m.receiverId === null).length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>My Open Requests</Text>
@@ -593,6 +833,8 @@ const MatchingScreen = ({ navigation }) => {
           </View>
         )}
       </ScrollView>
+      
+      {renderReportModal()}
     </SafeAreaView>
   );
 };
@@ -675,6 +917,43 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a1a',
     marginBottom: 12,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  blockedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffebee',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  blockedButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF3B30',
+  },
+  blockedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffebee',
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF3B30',
+  },
+  blockedNoticeText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#FF3B30',
+    fontWeight: '500',
+    marginLeft: 6,
   },
 
   // Course chips
@@ -923,10 +1202,21 @@ const styles = StyleSheet.create({
   secSubtxt: {
     color: '#666',
     fontSize: 14,
+    marginBottom: 4,
   },
   secSubtxtActive: {
     color: '#fff',
     opacity: 0.9,
+  },
+  secInstructorTxt: {
+    color: '#666',
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  secInstructorTxtActive: {
+    color: '#fff',
+    opacity: 0.85,
+    fontStyle: 'italic',
   },
 
   // Meeting options
@@ -977,6 +1267,117 @@ const styles = StyleSheet.create({
     color: '#fff', 
     fontSize: 16, 
     fontWeight: '600' 
+  },
+
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  reasonsList: {
+    maxHeight: 300,
+  },
+  reasonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  reasonItemSelected: {
+    backgroundColor: '#f0f8ff',
+    borderColor: '#007AFF',
+  },
+  reasonText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+    flex: 1,
+  },
+  reasonTextSelected: {
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  customReasonInput: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    fontSize: 16,
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  modalCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  modalSubmitButton: {
+    flex: 1,
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  modalSubmitButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  modalSubmitButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
 

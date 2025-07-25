@@ -10,6 +10,7 @@ import {
   deleteDoc,
   serverTimestamp,
   getDoc,
+  arrayUnion,
 } from 'firebase/firestore';
 import { getUserInfo } from './userService';
 
@@ -331,6 +332,23 @@ export const blockPartner = async (partnershipId, uid) => {
 };
 
 /**
+ * unblocking partners
+ */
+export const unblockPartner = async (partnershipId, uid) => {
+  const ref = doc(db, 'partners', partnershipId);
+  const docSnap = await getDoc(ref);
+  if (!docSnap.exists()) throw new Error('Partnership not found');
+
+  const data = docSnap.data();
+  const blockedBy = data.blockedBy || [];
+
+  // Remove the user from the blockedBy array
+  const updatedBlockedBy = blockedBy.filter(id => id !== uid);
+  
+  await updateDoc(ref, { blockedBy: updatedBlockedBy });
+};
+
+/**
  * check if the partner is blocked or not
  */
 export const isPartnerBlocked = async (partnershipId, uid) => {
@@ -344,21 +362,20 @@ export const isPartnerBlocked = async (partnershipId, uid) => {
 };
 
 /**
- * report system
+ * report system - FIXED VERSION
  */
 export const reportPartner = async (partnershipId, reporterId, reason) => {
   const ref = doc(db, 'partners', partnershipId);
-  const docSnap = await getDoc(ref);
-  if (!docSnap.exists()) throw new Error('Partnership not found');
-
-  const data = docSnap.data();
-  const reports = data.reports || [];
-
-  reports.push({
+  
+  // Create report object with current timestamp (not serverTimestamp)
+  const newReport = {
     reporterId,
     reason,
-    reportedAt: serverTimestamp(),
-  });
+    reportedAt: new Date(), // ✅ Use regular Date instead of serverTimestamp()
+  };
 
-  await updateDoc(ref, { reports });
+  // Use arrayUnion to add the report efficiently
+  await updateDoc(ref, {
+    reports: arrayUnion(newReport)
+  });
 };

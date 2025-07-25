@@ -14,13 +14,14 @@ import { auth } from '../firebaseConfig';
 import { db } from '../firebaseConfig';
 import { collection, query, where, onSnapshot, getDocs, orderBy, limit, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
-import { getAcceptedPartners } from '../backend/partnerService';
+import { getAcceptedPartners, isPartnerBlocked } from '../backend/partnerService';
 import { getOrCreateChat, getUnreadCount } from '../backend/chatService';
 import { Swipeable } from 'react-native-gesture-handler';
 
 const InboxScreen = () => {
   const [threads, setThreads] = useState([]);
   const [partners, setPartners] = useState([]);
+  const [blockedPartners, setBlockedPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState({});
   const navigation = useNavigation();
@@ -52,10 +53,29 @@ const InboxScreen = () => {
     try {
       console.log('Loading data...');
       
-      // Load partners first
-      const partnersData = await getAcceptedPartners(auth.currentUser.uid);
-      console.log('Partners loaded:', partnersData.length);
-      setPartners(partnersData);
+      // Load partners first and separate blocked from active
+      const allPartners = await getAcceptedPartners(auth.currentUser.uid);
+      
+      // Check block status for each partner
+      const partnerStatusPromises = allPartners.map(async (partner) => {
+        const isBlocked = await isPartnerBlocked(partner.id, auth.currentUser.uid);
+        return {
+          ...partner,
+          isBlocked
+        };
+      });
+      
+      const partnersWithStatus = await Promise.all(partnerStatusPromises);
+      
+      // Separate blocked and unblocked partners
+      const activePartners = partnersWithStatus.filter(p => !p.isBlocked);
+      const blocked = partnersWithStatus.filter(p => p.isBlocked);
+      
+      console.log('Active partners loaded:', activePartners.length);
+      console.log('Blocked partners:', blocked.length);
+      
+      setPartners(activePartners);
+      setBlockedPartners(blocked);
       
       // Load existing chats
       const chatsQuery = query(
@@ -74,11 +94,19 @@ const InboxScreen = () => {
         return;
       }
 
-      // Process each chat and get unread counts
+      // Process each chat and get unread counts (exclude blocked partners)
       const threadPromises = chatDocs.docs.map(async (chatDoc) => {
         try {
           const chatData = chatDoc.data();
           const otherUid = chatData.participants.find((id) => id !== auth.currentUser.uid);
+
+          // Check if this partner is blocked
+          const partnership = partnersWithStatus.find(p => p.partnerId === otherUid);
+          
+          // Skip blocked partners' chats
+          if (partnership?.isBlocked) {
+            return null;
+          }
 
           // Get other user's name
           const userDoc = await getDoc(doc(db, 'users', otherUid));
@@ -150,6 +178,13 @@ const InboxScreen = () => {
       console.error('Error deleting chat:', error);
       Alert.alert('Error', 'Failed to delete the chat.');
     }
+  };
+
+  const handleViewBlockedPartners = () => {
+    navigation.navigate('BlockedPartners', { 
+      blockedPartners, 
+      onPartnersUpdated: loadData 
+    });
   };
   
   const startChatWithPartner = async (partner) => {
@@ -244,7 +279,7 @@ const InboxScreen = () => {
     </TouchableOpacity>
   );
 
-  // Calculate total unread messages
+  // Calculate total unread messages (already excludes blocked partners)
   const totalUnreadCount = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
 
   if (!auth.currentUser?.uid) {
@@ -268,7 +303,7 @@ const InboxScreen = () => {
     );
   }
 
-  // Filter partners that don't already have active chats
+  // Filter partners that don't already have active chats (only active partners)
   const partnersWithoutChats = partners.filter(partner => 
     !threads.some(thread => thread.otherUid === partner.partnerId)
   );
@@ -279,14 +314,39 @@ const InboxScreen = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.headerContainer}>
         <Text style={styles.title}>Messages</Text>
-        {totalUnreadCount > 0 && (
-          <View style={styles.totalUnreadBadge}>
-            <Text style={styles.totalUnreadText}>
-              {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
-            </Text>
-          </View>
-        )}
+        <View style={styles.headerActions}>
+          {blockedPartners.length > 0 && (
+            <TouchableOpacity 
+              style={styles.blockedButton} 
+              onPress={handleViewBlockedPartners}
+            >
+              <Ionicons name="ban" size={18} color="#FF3B30" />
+              <Text style={styles.blockedCount}>{blockedPartners.length}</Text>
+            </TouchableOpacity>
+          )}
+          {totalUnreadCount > 0 && (
+            <View style={styles.totalUnreadBadge}>
+              <Text style={styles.totalUnreadText}>
+                {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
+
+      {/* Blocked Partners Notice */}
+      {blockedPartners.length > 0 && (
+        <TouchableOpacity 
+          style={styles.blockedNotice}
+          onPress={handleViewBlockedPartners}
+        >
+          <Ionicons name="ban" size={20} color="#FF3B30" />
+          <Text style={styles.blockedNoticeText}>
+            {blockedPartners.length} blocked partner{blockedPartners.length > 1 ? 's' : ''} (tap to manage)
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color="#FF3B30" />
+        </TouchableOpacity>
+      )}
       
       {!hasContent ? (
         <View style={styles.emptyContainer}>
@@ -318,7 +378,7 @@ const InboxScreen = () => {
             </View>
           )}
           
-          {/* Available Partners */}
+          {/* Available Partners (only active ones) */}
           {partnersWithoutChats.length > 0 && (
             <View>
               <Text style={styles.sectionTitle}>Start New Conversation</Text>
@@ -358,6 +418,25 @@ const styles = StyleSheet.create({
     color: '#333',
     flex: 1,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  blockedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffebee',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 4,
+  },
+  blockedCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FF3B30',
+  },
   totalUnreadBadge: {
     backgroundColor: '#FF3B30',
     borderRadius: 12,
@@ -371,6 +450,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  blockedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffebee',
+    marginHorizontal: 20,
+    marginBottom: 15,
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF3B30',
+  },
+  blockedNoticeText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#FF3B30',
+    fontWeight: '500',
+    marginLeft: 8,
   },
   sectionTitle: {
     fontSize: 18,

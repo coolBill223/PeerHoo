@@ -4,18 +4,18 @@ import {
   Text,
   StyleSheet,
   SafeAreaView,
-  ScrollView,
   TouchableOpacity,
+  ScrollView,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebaseConfig';
-import { getAcceptedPartners } from '../backend/partnerService';
+import { getAcceptedPartners, isPartnerBlocked } from '../backend/partnerService';
 import { ensureUserDocument } from '../backend/userService';
-import { getNotesByUser } from '../backend/noteService'; // Import notes service
-import { getUserInfo } from '../backend/userService'; // Import user service
-import { getMyMatchRequests } from '../backend/matchService'; // Import match service
+import { getNotesByUser } from '../backend/noteService';
+import { getUserInfo } from '../backend/userService';
+import { getMyMatchRequests } from '../backend/matchService';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getUnreadCount } from '../backend/chatService';
 
@@ -36,9 +36,10 @@ const HomeScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [partners, setPartners] = useState([]);
+  const [blockedPartners, setBlockedPartners] = useState([]);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
-  const [userNotes, setUserNotes] = useState([]); // Add state for user's notes
-  const [userCourseCount, setUserCourseCount] = useState(0); // Add state for course count
+  const [userNotes, setUserNotes] = useState([]);
+  const [userCourseCount, setUserCourseCount] = useState(0);
   const [currentTip, setCurrentTip] = useState('');
 
   useEffect(() => {
@@ -55,8 +56,7 @@ const HomeScreen = ({ navigation }) => {
         
         // fetch all documents where status === 'accepted'
         try {
-          const partnersData = await getAcceptedPartners(current.uid);
-          setPartners(partnersData);
+          await loadPartnersData(current.uid);
           
           // Load user's notes
           await loadUserNotes(current.uid);
@@ -64,8 +64,8 @@ const HomeScreen = ({ navigation }) => {
           // Load user's course count
           await loadUserCourseCount(current.uid);
           
-          // Load unread message count
-          await loadUnreadMessageCount(current.uid);
+          // Load unread message count - this needs to wait for partners data to be loaded
+          // So we'll call it after partners are loaded
         } catch (error) {
           console.error('Error fetching data:', error);
         }
@@ -73,6 +73,44 @@ const HomeScreen = ({ navigation }) => {
       const randomTip = tipBank[Math.floor(Math.random() * tipBank.length)];
       setCurrentTip(randomTip);
     };
+
+    initializeUser();
+  }, []);
+
+  // Load partners and filter out blocked ones
+  const loadPartnersData = async (uid) => {
+    try {
+      const allPartners = await getAcceptedPartners(uid);
+      
+      // Check block status for each partner
+      const partnerStatusPromises = allPartners.map(async (partner) => {
+        const isBlocked = await isPartnerBlocked(partner.id, uid);
+        return {
+          ...partner,
+          isBlocked
+        };
+      });
+      
+      const partnersWithStatus = await Promise.all(partnerStatusPromises);
+      
+      // Separate blocked and unblocked partners
+      const activePartners = partnersWithStatus.filter(p => !p.isBlocked);
+      const blocked = partnersWithStatus.filter(p => p.isBlocked);
+      
+      setPartners(activePartners);
+      setBlockedPartners(blocked);
+      
+      // Now load unread messages, excluding blocked partners
+      await loadUnreadMessageCount(uid, activePartners, blocked);
+      
+      console.log(`Loaded ${activePartners.length} active partners, ${blocked.length} blocked partners`);
+    } catch (error) {
+      console.error('Error loading partners data:', error);
+      setPartners([]);
+      setBlockedPartners([]);
+      setTotalUnreadMessages(0);
+    }
+  };
 
   // Load user's course count from match requests
   const loadUserCourseCount = async (uid) => {
@@ -89,9 +127,6 @@ const HomeScreen = ({ navigation }) => {
       setUserCourseCount(0);
     }
   };
-
-    initializeUser();
-  }, []);
 
   // Load user profile data from Firestore
   const loadUserProfile = async (uid) => {
@@ -146,29 +181,12 @@ const HomeScreen = ({ navigation }) => {
       setUserNotes(notesWithAuthors);
     } catch (error) {
       console.error('Error loading user notes:', error);
-      // Don't show alert for notes loading error on home screen
       setUserNotes([]);
     }
   };
 
-  // Load user's course count from match requests
-  const loadUserCourseCount = async (uid) => {
-    try {
-      const matchRequests = await getMyMatchRequests(uid);
-      const userCourses = matchRequests
-        .filter((m) => m.senderId === uid)
-        .map((m) => m.course);
-      
-      const uniqueCourses = [...new Set(userCourses)];
-      setUserCourseCount(uniqueCourses.length);
-    } catch (error) {
-      console.error('Error loading user course count:', error);
-      setUserCourseCount(0);
-    }
-  };
-
-  // Function to load total unread message count
-  const loadUnreadMessageCount = async (userId) => {
+  // Function to load total unread message count (excluding blocked partners)
+  const loadUnreadMessageCount = async (userId, activePartners = partners, blockedPartners = []) => {
     try {
       // Get all chats for this user
       const chatsQuery = query(
@@ -183,8 +201,19 @@ const HomeScreen = ({ navigation }) => {
         return;
       }
 
-      // Get unread count for each chat
+      // Create a set of blocked partner IDs for faster lookup
+      const blockedPartnerIds = new Set(blockedPartners.map(p => p.partnerId));
+
+      // Get unread count for each chat, but exclude blocked partners
       const unreadPromises = chatDocs.docs.map(async (chatDoc) => {
+        const chatData = chatDoc.data();
+        const otherUserId = chatData.participants.find(id => id !== userId);
+        
+        // If the other user is in our blocked list, don't count unread messages
+        if (blockedPartnerIds.has(otherUserId)) {
+          return 0;
+        }
+        
         return await getUnreadCount(chatDoc.id, userId);
       });
       
@@ -192,6 +221,7 @@ const HomeScreen = ({ navigation }) => {
       const totalUnread = unreadCounts.reduce((sum, count) => sum + count, 0);
       
       setTotalUnreadMessages(totalUnread);
+      console.log(`HomeScreen: Total unread messages (excluding blocked): ${totalUnread}`);
     } catch (error) {
       console.error('Error loading unread message count:', error);
       setTotalUnreadMessages(0);
@@ -203,15 +233,9 @@ const HomeScreen = ({ navigation }) => {
     const current = auth.currentUser;
     if (current) {
       try {
-        const partnersData = await getAcceptedPartners(current.uid);
+        await loadPartnersData(current.uid);
         
-        // Only update state if we actually got data
-        if (partnersData && Array.isArray(partnersData)) {
-          setPartners(partnersData);
-        }
-        
-        // Reload unread count and notes
-        await loadUnreadMessageCount(current.uid);
+        // Reload notes and course count
         await loadUserNotes(current.uid);
         await loadUserCourseCount(current.uid);
       } catch (error) {
@@ -225,7 +249,7 @@ const HomeScreen = ({ navigation }) => {
     const unsubscribe = navigation.addListener('focus', () => {
       if (auth.currentUser?.uid) {
         loadUserProfile(auth.currentUser.uid);
-        loadUnreadMessageCount(auth.currentUser.uid);
+        loadPartnersData(auth.currentUser.uid);
         loadUserNotes(auth.currentUser.uid);
         loadUserCourseCount(auth.currentUser.uid);
       }
@@ -256,44 +280,12 @@ const HomeScreen = ({ navigation }) => {
     );
   };
 
-  // Get unique courses from user's notes (keep as fallback)
-  const getUserCourses = () => {
-    const courses = new Set(userNotes.map(note => note.course));
-    return courses.size;
+  const handleViewBlockedPartners = () => {
+    navigation.navigate('BlockedPartners', { 
+      blockedPartners, 
+      onPartnersUpdated: reloadPartners 
+    });
   };
-
-  const quickActions = [
-    { 
-      title: 'Find Study Partners', 
-      icon: 'people', 
-      screen: 'Find Partners',
-      description: 'Match with peers in your courses',
-      color: '#007AFF' 
-    },
-    { 
-      title: 'Browse Notes', 
-      icon: 'document-text', 
-      screen: 'Notes',
-      description: 'Access shared course materials',
-      color: '#34C759' 
-    },
-    { 
-      title: 'Messages', 
-      icon: 'chatbubble', 
-      screen: 'Chat',
-      description: 'Chat with study partners',
-      color: '#FF9500',
-      hasNotification: totalUnreadMessages > 0,
-      notificationCount: totalUnreadMessages
-    },
-    { 
-      title: 'My Profile', 
-      icon: 'person', 
-      screen: 'Profile',
-      description: 'Manage courses and profile',
-      color: '#5856D6' 
-    },
-  ];
 
   // Generate recent activity from actual data
   const getRecentActivity = () => {
@@ -310,7 +302,7 @@ const HomeScreen = ({ navigation }) => {
       });
     });
     
-    // Add recent partners
+    // Add recent partners (only active ones)
     const recentPartners = partners.slice(0, 1);
     recentPartners.forEach(partner => {
       activities.push({
@@ -320,7 +312,7 @@ const HomeScreen = ({ navigation }) => {
       });
     });
     
-    // Add placeholder message activity if there are partners
+    // Add placeholder message activity if there are active partners
     if (partners.length > 0) {
       activities.push({
         type: 'message',
@@ -364,6 +356,39 @@ const HomeScreen = ({ navigation }) => {
     return '';
   };
 
+  const quickActions = [
+    { 
+      title: 'Find Study Partners', 
+      icon: 'people', 
+      screen: 'Find Partners',
+      description: 'Match with peers in your courses',
+      color: '#007AFF' 
+    },
+    { 
+      title: 'Browse Notes', 
+      icon: 'document-text', 
+      screen: 'Notes',
+      description: 'Access shared course materials',
+      color: '#34C759' 
+    },
+    { 
+      title: 'Messages', 
+      icon: 'chatbubble', 
+      screen: 'Chat',
+      description: 'Chat with study partners',
+      color: '#FF9500',
+      hasNotification: totalUnreadMessages > 0,
+      notificationCount: totalUnreadMessages
+    },
+    { 
+      title: 'My Profile', 
+      icon: 'person', 
+      screen: 'Profile',
+      description: 'Manage courses and profile',
+      color: '#5856D6' 
+    },
+  ];
+
   const recentActivity = getRecentActivity();
 
   return (
@@ -377,9 +402,20 @@ const HomeScreen = ({ navigation }) => {
             </Text>
             <Text style={styles.subtitle}>Ready to study together?</Text>
           </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            {blockedPartners.length > 0 && (
+              <TouchableOpacity 
+                style={styles.blockedButton} 
+                onPress={handleViewBlockedPartners}
+              >
+                <Ionicons name="ban" size={20} color="#FF3B30" />
+                <Text style={styles.blockedCount}>{blockedPartners.length}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Stats Cards */}
@@ -387,7 +423,7 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.statCard}>
             <Ionicons name="people" size={24} color="#007AFF" />
             <Text style={styles.statNumber}>{partners.length}</Text>
-            <Text style={styles.statLabel}>Study Partners</Text>
+            <Text style={styles.statLabel}>Active Partners</Text>
           </View>
           <View style={styles.statCard}>
             <Ionicons name="document-text" size={24} color="#34C759" />
@@ -400,6 +436,20 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.statLabel}>Courses</Text>
           </View>
         </View>
+
+        {/* Blocked Partners Notice */}
+        {blockedPartners.length > 0 && (
+          <TouchableOpacity 
+            style={styles.blockedNotice}
+            onPress={handleViewBlockedPartners}
+          >
+            <Ionicons name="ban" size={20} color="#FF3B30" />
+            <Text style={styles.blockedNoticeText}>
+              {blockedPartners.length} blocked partner{blockedPartners.length > 1 ? 's' : ''}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#FF3B30" />
+          </TouchableOpacity>
+        )}
 
         {/* Quick Actions */}
         <View style={styles.section}>
@@ -430,10 +480,10 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
         
-        {/* Study Partners – shows only when you have ≥1 */}
+        {/* Study Partners – shows only active (non-blocked) partners */}
         {partners.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Study Partners</Text>
+            <Text style={styles.sectionTitle}>Active Study Partners</Text>
             {partners.map((p) => {
               return (
                 <TouchableOpacity
@@ -530,8 +580,45 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 5,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  blockedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffebee',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  blockedCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF3B30',
+  },
   logoutButton: {
     padding: 8,
+  },
+  blockedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffebee',
+    marginHorizontal: 20,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF3B30',
+  },
+  blockedNoticeText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#FF3B30',
+    fontWeight: '500',
+    marginLeft: 8,
   },
   statsContainer: {
     flexDirection: 'row',
