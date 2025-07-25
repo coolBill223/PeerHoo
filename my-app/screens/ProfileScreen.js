@@ -14,9 +14,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db } from '../firebaseConfig';
-import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { uploadProfilePicture, updateUserPhotoURL } from '../backend/userService';
+import { getAcceptedPartners, isPartnerBlocked } from '../backend/partnerService';
+import { getNotesByUser } from '../backend/noteService';
+import { getMyMatchRequests } from '../backend/matchService';
+import { useFocusEffect } from '@react-navigation/native';
 
 const avatarOptions = [
   'school',
@@ -45,10 +49,82 @@ const ProfileScreen = () => {
   const [saving, setSaving] = useState(false);
   const [profilePicture, setProfilePicture] = useState(null);
   const [uploadingPicture, setUploadingPicture] = useState(false);
+  
+  // Statistics state
+  const [stats, setStats] = useState({
+    activePartners: 0,
+    notesShared: 0,
+    coursesCount: 0,
+    rating: 0
+  });
+
+  // Add focus effect to reload data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('ProfileScreen: Screen focused - reloading data...');
+      if (auth.currentUser?.uid) {
+        loadUserProfile();
+        loadUserStats();
+      }
+    }, [])
+  );
 
   useEffect(() => {
     loadUserProfile();
+    loadUserStats();
   }, []);
+
+  const loadUserStats = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      console.log('ProfileScreen: Loading user statistics...');
+
+      // Load partners and filter out blocked ones
+      const allPartners = await getAcceptedPartners(user.uid);
+      const partnerStatusPromises = allPartners.map(async (partner) => {
+        const isBlocked = await isPartnerBlocked(partner.id, user.uid);
+        return { ...partner, isBlocked };
+      });
+      
+      const partnersWithStatus = await Promise.all(partnerStatusPromises);
+      const activePartners = partnersWithStatus.filter(p => !p.isBlocked);
+
+      // Load user's notes
+      const userNotes = await getNotesByUser(user.uid);
+
+      // Load user's courses from match requests
+      const matchRequests = await getMyMatchRequests(user.uid);
+      const userCourses = matchRequests
+        .filter((m) => m.senderId === user.uid)
+        .map((m) => m.course);
+      const uniqueCourses = [...new Set(userCourses)];
+
+      // Calculate a simple rating based on activity (you can customize this)
+      const activityScore = (activePartners.length * 2) + userNotes.length;
+      const rating = Math.min(5, Math.max(0, activityScore / 5)); // Scale to 0-5
+
+      const newStats = {
+        activePartners: activePartners.length,
+        notesShared: userNotes.length,
+        coursesCount: uniqueCourses.length,
+        rating: rating.toFixed(1)
+      };
+
+      console.log('ProfileScreen: Statistics loaded:', newStats);
+      setStats(newStats);
+
+    } catch (error) {
+      console.error('ProfileScreen: Error loading user statistics:', error);
+      setStats({
+        activePartners: 0,
+        notesShared: 0,
+        coursesCount: 0,
+        rating: 0
+      });
+    }
+  };
 
   const loadUserProfile = async () => {
     try {
@@ -59,6 +135,8 @@ const ProfileScreen = () => {
         Alert.alert('Error', 'No authenticated user found');
         return;
       }
+
+      console.log('ProfileScreen: Loading user profile...');
 
       // Try to get from Firestore
       const userDocRef = doc(db, 'users', user.uid);
@@ -106,7 +184,7 @@ const ProfileScreen = () => {
       }
       
     } catch (error) {
-      console.error('Error loading user profile:', error);
+      console.error('ProfileScreen: Error loading user profile:', error);
       Alert.alert('Error', `Failed to load profile: ${error.message}`);
       
       // Fallback to auth data
@@ -300,6 +378,9 @@ const ProfileScreen = () => {
           console.warn('Failed to update Firebase Auth displayName:', authError);
         }
       }
+
+      // Reload stats after saving
+      await loadUserStats();
 
       return true;
       
@@ -645,24 +726,29 @@ const ProfileScreen = () => {
           </View>
         )}
 
-        {/* Stats Section */}
+        {/* Stats Section - Now with real data */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>My Activity</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
               <Ionicons name="people" size={24} color="#007AFF" />
-              <Text style={styles.statNumber}>0</Text>
+              <Text style={styles.statNumber}>{stats.activePartners}</Text>
               <Text style={styles.statLabel}>Study Partners</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="document-text" size={24} color="#34C759" />
-              <Text style={styles.statNumber}>0</Text>
+              <Text style={styles.statNumber}>{stats.notesShared}</Text>
               <Text style={styles.statLabel}>Notes Shared</Text>
             </View>
             <View style={styles.statItem}>
+              <Ionicons name="school" size={24} color="#5856D6" />
+              <Text style={styles.statNumber}>{stats.coursesCount}</Text>
+              <Text style={styles.statLabel}>Courses</Text>
+            </View>
+            <View style={styles.statItem}>
               <Ionicons name="star" size={24} color="#FF9500" />
-              <Text style={styles.statNumber}>0</Text>
-              <Text style={styles.statLabel}>Rating</Text>
+              <Text style={styles.statNumber}>{stats.rating}</Text>
+              <Text style={styles.statLabel}>Activity Score</Text>
             </View>
           </View>
         </View>
@@ -963,6 +1049,7 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 15,
@@ -971,10 +1058,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowRadius: 3,
     elevation: 2,
+    justifyContent: 'space-between',
   },
   statItem: {
-    flex: 1,
+    width: '48%',
     alignItems: 'center',
+    marginBottom: 15,
   },
   statNumber: {
     fontSize: 20,
