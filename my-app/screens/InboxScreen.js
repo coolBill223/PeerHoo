@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../firebaseConfig';
 import { db } from '../firebaseConfig';
 import { collection, query, where, onSnapshot, getDocs, orderBy, limit, doc, getDoc, deleteDoc } from 'firebase/firestore';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getAcceptedPartners, isPartnerBlocked } from '../backend/partnerService';
 import { getOrCreateChat, getUnreadCount } from '../backend/chatService';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -25,6 +25,16 @@ const InboxScreen = () => {
   const [loading, setLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState({});
   const navigation = useNavigation();
+
+  // Add focus effect to reload data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('InboxScreen: Screen focused - reloading data...');
+      if (auth.currentUser?.uid) {
+        loadData();
+      }
+    }, [])
+  );
 
   useEffect(() => {
     if (!auth.currentUser?.uid) {
@@ -43,15 +53,29 @@ const InboxScreen = () => {
     
     const unsubscribe = onSnapshot(chatsQuery, () => {
       // Reload data when chats change
+      console.log('InboxScreen: Chat changes detected - reloading data...');
       loadData();
     });
 
     return () => unsubscribe();
   }, []);
 
+  // Reload data when navigation focus changes
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log('InboxScreen: Navigation focus event - reloading data...');
+      if (auth.currentUser?.uid) {
+        loadData();
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   const loadData = async () => {
     try {
-      console.log('Loading data...');
+      console.log('InboxScreen: Loading data...');
+      setLoading(true); // Set loading to true each time we reload
       
       // Load partners first and separate blocked from active
       const allPartners = await getAcceptedPartners(auth.currentUser.uid);
@@ -71,8 +95,8 @@ const InboxScreen = () => {
       const activePartners = partnersWithStatus.filter(p => !p.isBlocked);
       const blocked = partnersWithStatus.filter(p => p.isBlocked);
       
-      console.log('Active partners loaded:', activePartners.length);
-      console.log('Blocked partners:', blocked.length);
+      console.log('InboxScreen: Active partners loaded:', activePartners.length);
+      console.log('InboxScreen: Blocked partners:', blocked.length);
       
       setPartners(activePartners);
       setBlockedPartners(blocked);
@@ -84,10 +108,10 @@ const InboxScreen = () => {
       );
       
       const chatDocs = await getDocs(chatsQuery);
-      console.log('Found chats:', chatDocs.docs.length);
+      console.log('InboxScreen: Found chats:', chatDocs.docs.length);
       
       if (chatDocs.empty) {
-        console.log('No existing chats found');
+        console.log('InboxScreen: No existing chats found');
         setThreads([]);
         setUnreadCounts({});
         setLoading(false);
@@ -105,6 +129,7 @@ const InboxScreen = () => {
           
           // Skip blocked partners' chats
           if (partnership?.isBlocked) {
+            console.log('InboxScreen: Skipping blocked partner chat:', otherUid);
             return null;
           }
 
@@ -135,7 +160,7 @@ const InboxScreen = () => {
           };
           
         } catch (error) {
-          console.error('Error processing chat:', chatDoc.id, error);
+          console.error('InboxScreen: Error processing chat:', chatDoc.id, error);
           return null;
         }
       });
@@ -149,15 +174,15 @@ const InboxScreen = () => {
         newUnreadCounts[thread.id] = thread.unreadCount;
       });
       
-      console.log('Threads processed:', validThreads.length);
-      console.log('Unread counts:', newUnreadCounts);
+      console.log('InboxScreen: Threads processed:', validThreads.length);
+      console.log('InboxScreen: Unread counts:', newUnreadCounts);
       
       setThreads(validThreads);
       setUnreadCounts(newUnreadCounts);
       setLoading(false);
       
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('InboxScreen: Error loading data:', error);
       setLoading(false);
     }
   };
@@ -174,8 +199,11 @@ const InboxScreen = () => {
       await deleteDoc(doc(db, 'chats', chatId));
   
       setThreads(prev => prev.filter(thread => thread.id !== chatId));
+      
+      // Reload data to refresh everything
+      await loadData();
     } catch (error) {
-      console.error('Error deleting chat:', error);
+      console.error('InboxScreen: Error deleting chat:', error);
       Alert.alert('Error', 'Failed to delete the chat.');
     }
   };
@@ -189,7 +217,7 @@ const InboxScreen = () => {
   
   const startChatWithPartner = async (partner) => {
     try {
-      console.log('Starting chat with partner:', partner.partnerName);
+      console.log('InboxScreen: Starting chat with partner:', partner.partnerName);
       const chatId = await getOrCreateChat(auth.currentUser.uid, partner.partnerId);
       
       const thread = {
@@ -202,7 +230,7 @@ const InboxScreen = () => {
 
       navigation.navigate('ChatThread', { thread });
     } catch (error) {
-      console.error('Error starting chat:', error);
+      console.error('InboxScreen: Error starting chat:', error);
       Alert.alert('Error', 'Failed to start chat. Please try again.');
     }
   };

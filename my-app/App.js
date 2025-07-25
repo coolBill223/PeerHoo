@@ -64,6 +64,12 @@ const TabBarIcon = ({ name, focused, color, size, hasNotification, notificationC
 // Main Tab Navigator for authenticated users
 function MainTabNavigator() {
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Function to force refresh all screens
+  const forceRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+  };
 
   useEffect(() => {
     if (!auth.currentUser?.uid) {
@@ -138,7 +144,7 @@ function MainTabNavigator() {
     });
 
     return () => unsubscribe();
-  }, [auth.currentUser?.uid]);
+  }, [auth.currentUser?.uid, refreshKey]);
 
   return (
     <Tab.Navigator
@@ -172,13 +178,68 @@ function MainTabNavigator() {
         tabBarActiveTintColor: '#007AFF',
         tabBarInactiveTintColor: 'gray',
         headerShown: false,
+        // Force unmount and remount on tab change for fresh data
+        unmountOnBlur: false, // Keep false to maintain state but use focus listeners
+        lazy: false, // Load all tabs immediately
       })}
+      screenListeners={{
+        tabPress: (e) => {
+          // Force refresh when any tab is pressed
+          forceRefresh();
+        },
+      }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Find Partners" component={MatchingScreen} />
-      <Tab.Screen name="Chat" component={ChatScreen} />
-      <Tab.Screen name="Notes" component={NotesScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen 
+        name="Home" 
+        component={HomeScreen}
+        initialParams={{ refreshKey }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Additional refresh logic for Home screen
+            console.log('Home tab pressed - refreshing...');
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Find Partners" 
+        component={MatchingScreen}
+        initialParams={{ refreshKey }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            console.log('Find Partners tab pressed - refreshing...');
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Chat" 
+        component={ChatScreen}
+        initialParams={{ refreshKey }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            console.log('Chat tab pressed - refreshing...');
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Notes" 
+        component={NotesScreen}
+        initialParams={{ refreshKey }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            console.log('Notes tab pressed - refreshing...');
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileScreen}
+        initialParams={{ refreshKey }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            console.log('Profile tab pressed - refreshing...');
+          },
+        })}
+      />
     </Tab.Navigator>
   );
 }

@@ -403,15 +403,6 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.subtitle}>Ready to study together?</Text>
           </View>
           <View style={styles.headerActions}>
-            {blockedPartners.length > 0 && (
-              <TouchableOpacity 
-                style={styles.blockedButton} 
-                onPress={handleViewBlockedPartners}
-              >
-                <Ionicons name="ban" size={20} color="#FF3B30" />
-                <Text style={styles.blockedCount}>{blockedPartners.length}</Text>
-              </TouchableOpacity>
-            )}
             <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
               <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
             </TouchableOpacity>
@@ -584,20 +575,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  blockedButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffebee',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 4,
-  },
-  blockedCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FF3B30',
   },
   logoutButton: {
     padding: 8,
