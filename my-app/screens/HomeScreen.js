@@ -1,3 +1,7 @@
+// The purpose of this file: This is the ui and functionality for the home screen
+
+// Imports
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -19,6 +23,7 @@ import { getMyMatchRequests } from '../backend/matchService';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getUnreadCount } from '../backend/chatService';
 
+// this is the tip bank
 const tipBank = [
   "Share your notes after each lecture to help your classmates and build your reputation!",
   "Use flashcards to reinforce your memory of key concepts.",
@@ -48,24 +53,22 @@ const HomeScreen = ({ navigation }) => {
       setUser(current);
 
       if (current) {
-        // Ensure user document exists in Firestore
+        // we are looking to see the user document exists
         await ensureUserDocument();
         
-        // Load user profile data
+        // loading the profile data
         await loadUserProfile(current.uid);
         
-        // fetch all documents where status === 'accepted'
+        // fetching all data
         try {
           await loadPartnersData(current.uid);
           
-          // Load user's notes
+          // these are the notes count that user has shared
           await loadUserNotes(current.uid);
           
-          // Load user's course count
+          // Loading the  user's course count
           await loadUserCourseCount(current.uid);
           
-          // Load unread message count - this needs to wait for partners data to be loaded
-          // So we'll call it after partners are loaded
         } catch (error) {
           console.error('Error fetching data:', error);
         }
@@ -82,7 +85,7 @@ const HomeScreen = ({ navigation }) => {
     try {
       const allPartners = await getAcceptedPartners(uid);
       
-      // Check block status for each partner
+      // Check blocked status for each partner
       const partnerStatusPromises = allPartners.map(async (partner) => {
         const isBlocked = await isPartnerBlocked(partner.id, uid);
         return {
@@ -93,14 +96,13 @@ const HomeScreen = ({ navigation }) => {
       
       const partnersWithStatus = await Promise.all(partnerStatusPromises);
       
-      // Separate blocked and unblocked partners
       const activePartners = partnersWithStatus.filter(p => !p.isBlocked);
       const blocked = partnersWithStatus.filter(p => p.isBlocked);
       
       setPartners(activePartners);
       setBlockedPartners(blocked);
       
-      // Now load unread messages, excluding blocked partners
+      // Now I will load unread messages
       await loadUnreadMessageCount(uid, activePartners, blocked);
       
       console.log(`Loaded ${activePartners.length} active partners, ${blocked.length} blocked partners`);
@@ -112,7 +114,7 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // Load user's course count from match requests
+  // Loading the user course counts
   const loadUserCourseCount = async (uid) => {
     try {
       const matchRequests = await getMyMatchRequests(uid);
@@ -128,7 +130,7 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // Load user profile data from Firestore
+  // Loading user profile data
   const loadUserProfile = async (uid) => {
     try {
       const userDocRef = doc(db, 'users', uid);
@@ -138,7 +140,6 @@ const HomeScreen = ({ navigation }) => {
         const userData = userDoc.data();
         setUserProfile(userData);
       } else {
-        // Fallback to auth data
         const current = auth.currentUser;
         if (current) {
           setUserProfile({
@@ -152,12 +153,10 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // Load user's notes
   const loadUserNotes = async (uid) => {
     try {
       const notes = await getNotesByUser(uid);
       
-      // Fetch author information for each note (even though they're all from the current user)
       const notesWithAuthors = await Promise.all(
         notes.map(async (note) => {
           try {
@@ -185,10 +184,10 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // Function to load total unread message count (excluding blocked partners)
+  // this is for loading total unread message count but not from blocked partners
   const loadUnreadMessageCount = async (userId, activePartners = partners, blockedPartners = []) => {
     try {
-      // Get all chats for this user
+      // getting all chats
       const chatsQuery = query(
         collection(db, 'chats'), 
         where('participants', 'array-contains', userId)
@@ -200,16 +199,14 @@ const HomeScreen = ({ navigation }) => {
         setTotalUnreadMessages(0);
         return;
       }
-
-      // Create a set of blocked partner IDs for faster lookup
+      // these are ids for faster look ups
       const blockedPartnerIds = new Set(blockedPartners.map(p => p.partnerId));
 
-      // Get unread count for each chat, but exclude blocked partners
+      // Geting unread count for each chat
       const unreadPromises = chatDocs.docs.map(async (chatDoc) => {
         const chatData = chatDoc.data();
         const otherUserId = chatData.participants.find(id => id !== userId);
         
-        // If the other user is in our blocked list, don't count unread messages
         if (blockedPartnerIds.has(otherUserId)) {
           return 0;
         }
@@ -228,14 +225,14 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // Function to reload partners after updating
+  // this is to reload partners after updating
   const reloadPartners = async () => {
     const current = auth.currentUser;
     if (current) {
       try {
         await loadPartnersData(current.uid);
         
-        // Reload notes and course count
+        // Reloading
         await loadUserNotes(current.uid);
         await loadUserCourseCount(current.uid);
       } catch (error) {
@@ -244,7 +241,7 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // Reload user profile, unread count, and notes when screen comes into focus
+  // Reloading user profile, unread count, and notes when screen comes into focus
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       if (auth.currentUser?.uid) {
@@ -287,11 +284,11 @@ const HomeScreen = ({ navigation }) => {
     });
   };
 
-  // Generate recent activity from actual data
+  // here I will be getting recent activity from actual data
   const getRecentActivity = () => {
     const activities = [];
     
-    // Add recent notes
+    // recent notes
     const recentNotes = userNotes.slice(0, 2);
     recentNotes.forEach(note => {
       const timeAgo = note.createdAt ? getTimeAgo(note.createdAt.toDate()) : 'Recently';
@@ -302,7 +299,7 @@ const HomeScreen = ({ navigation }) => {
       });
     });
     
-    // Add recent partners (only active ones)
+    // recent partners not th eblocked ones
     const recentPartners = partners.slice(0, 1);
     recentPartners.forEach(partner => {
       activities.push({
@@ -312,7 +309,6 @@ const HomeScreen = ({ navigation }) => {
       });
     });
     
-    // Add placeholder message activity if there are active partners
     if (partners.length > 0) {
       activities.push({
         type: 'message',
@@ -324,7 +320,7 @@ const HomeScreen = ({ navigation }) => {
     return activities.slice(0, 3); // Limit to 3 activities
   };
 
-  // Helper function to calculate time ago
+  // this gets the time ago
   const getTimeAgo = (date) => {
     const now = new Date();
     const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
@@ -339,15 +335,13 @@ const HomeScreen = ({ navigation }) => {
     return date.toLocaleDateString();
   };
 
-  // Helper function to get the first name safely from profile data
+  // this is to get the first name
   const getFirstName = () => {
-    // First try to get from loaded profile
     if (userProfile?.name && typeof userProfile.name === 'string' && userProfile.name.trim()) {
       const firstName = userProfile.name.split(' ')[0];
       return `, ${firstName}`;
     }
     
-    // Fallback to auth data
     if (user?.displayName && typeof user.displayName === 'string' && user.displayName.trim()) {
       const firstName = user.displayName.split(' ')[0];
       return `, ${firstName}`;
@@ -409,7 +403,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Stats Cards */}
+        {/* There are the stats Cards */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Ionicons name="people" size={24} color="#007AFF" />
@@ -428,7 +422,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Blocked Partners Notice */}
+        {/* These are the blocked partners notice */}
         {blockedPartners.length > 0 && (
           <TouchableOpacity 
             style={styles.blockedNotice}
@@ -442,7 +436,6 @@ const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         )}
 
-        {/* Quick Actions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.actionsGrid}>
@@ -471,7 +464,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
         
-        {/* Study Partners – shows only active (non-blocked) partners */}
+        {/* Study Partners */}
         {partners.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Active Study Partners</Text>
@@ -532,7 +525,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Tips Section */}
+        {/* Finally, Tips Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Study Tips</Text>
           <View style={styles.tipCard}>

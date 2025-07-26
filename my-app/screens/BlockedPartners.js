@@ -1,3 +1,7 @@
+// The purpose of this file: This is the ui for the screen that manages blocked study partners,
+// here they can manage their blocked partners all at once
+
+// imports
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -14,25 +18,30 @@ import { getAcceptedPartners, isPartnerBlocked, unblockPartner } from '../backen
 import { auth } from '../firebaseConfig';
 
 const BlockedPartnersScreen = ({ route, navigation }) => {
+
   const { onPartnersUpdated } = route.params || {};
+  
+  // this is the ctate management 
   const [blockedPartners, setBlockedPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [unblockingPartners, setUnblockingPartners] = useState(new Set());
 
+  // Here it will load blocked partners 
   useEffect(() => {
     loadBlockedPartners();
   }, []);
 
+  // here we fetch all partners and filter for blocked ones
   const loadBlockedPartners = async () => {
     try {
       setLoading(true);
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
-      // Get all partners
+      // Then we get all the partners first 
       const allPartners = await getAcceptedPartners(currentUser.uid);
       
-      // Check block status for each partner
+      // Then we check block status for each partner
       const partnerStatusPromises = allPartners.map(async (partner) => {
         const isBlocked = await isPartnerBlocked(partner.id, currentUser.uid);
         return {
@@ -43,7 +52,7 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
       
       const partnersWithStatus = await Promise.all(partnerStatusPromises);
       
-      // Filter only blocked partners
+      // Then we filter to only show blocked partners
       const blocked = partnersWithStatus.filter(p => p.isBlocked);
       
       setBlockedPartners(blocked);
@@ -55,6 +64,7 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
     }
   };
 
+  // Then we handle unblocking a single partner and we also put a confirmation
   const handleUnblockPartner = async (partner) => {
     Alert.alert(
       'Unblock Partner',
@@ -65,14 +75,16 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
           text: 'Unblock',
           style: 'default',
           onPress: async () => {
+            // adding partner
             setUnblockingPartners(prev => new Set([...prev, partner.id]));
             
             try {
               const currentUser = auth.currentUser;
               if (currentUser && partner.id) {
+                // here is backend service integration
                 await unblockPartner(partner.id, currentUser.uid);
                 
-                // Remove from blocked partners list
+                // removing from local partners list
                 setBlockedPartners(prev => prev.filter(p => p.id !== partner.id));
                 
                 Alert.alert(
@@ -80,7 +92,7 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
                   `${partner.partnerName} has been unblocked and can now contact you.`
                 );
                 
-                // Notify parent screen to refresh
+                // here parent screen will reload
                 if (onPartnersUpdated) {
                   onPartnersUpdated();
                 }
@@ -101,6 +113,7 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
     );
   };
 
+  // This is to unblock all! 
   const handleUnblockAll = () => {
     if (blockedPartners.length === 0) return;
 
@@ -119,13 +132,14 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
               const currentUser = auth.currentUser;
               if (!currentUser) return;
 
-              // Unblock all partners
+              // this uses promises
               const unblockPromises = blockedPartners.map(partner => 
                 unblockPartner(partner.id, currentUser.uid)
               );
               
               await Promise.all(unblockPromises);
               
+              // clearing the blocked list
               setBlockedPartners([]);
               
               Alert.alert(
@@ -133,14 +147,14 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
                 'All blocked partners have been unblocked successfully.'
               );
               
-              // Notify parent screen to refresh
+              // refreshing screen
               if (onPartnersUpdated) {
                 onPartnersUpdated();
               }
             } catch (error) {
               console.error('Error unblocking all partners:', error);
               Alert.alert('Error', 'Failed to unblock some partners. Please try again.');
-              // Reload to show current state
+              // Reload 
               loadBlockedPartners();
             } finally {
               setLoading(false);
@@ -179,6 +193,7 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
         </View>
       ) : (
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          {/* This shows empty state if no blocked partners */}
           {blockedPartners.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="checkmark-circle" size={64} color="#34C759" />
@@ -189,6 +204,7 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
             </View>
           ) : (
             <>
+              {/* This is a explanation explaining blocked partners */}
               <View style={styles.infoSection}>
                 <View style={styles.infoCard}>
                   <Ionicons name="information-circle" size={20} color="#007AFF" />
@@ -199,14 +215,17 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
                 </View>
               </View>
 
+              {/* List of blocked partners here */}
               <View style={styles.partnersSection}>
                 <Text style={styles.sectionTitle}>Blocked Partners</Text>
                 
+                {/* each will be a card*/}
                 {blockedPartners.map((partner) => {
                   const isUnblocking = unblockingPartners.has(partner.id);
                   
                   return (
                     <View key={partner.id} style={styles.partnerCard}>
+                      {/* Partner info */}
                       <View style={styles.partnerInfo}>
                         <View style={styles.avatarContainer}>
                           <Ionicons name="person" size={24} color="#666" />
@@ -222,6 +241,7 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
                         </View>
                       </View>
                       
+                      {/* Unblock button */}
                       <TouchableOpacity
                         style={[styles.unblockButton, isUnblocking && styles.unblockButtonDisabled]}
                         onPress={() => handleUnblockPartner(partner)}
@@ -248,6 +268,7 @@ const BlockedPartnersScreen = ({ route, navigation }) => {
   );
 };
 
+// Styles 
 const styles = StyleSheet.create({
   container: {
     flex: 1,

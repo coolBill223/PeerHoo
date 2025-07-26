@@ -1,3 +1,6 @@
+// The purpose of this file: This is for the individual chat conversation screen that displays messages
+
+// Imports
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -24,12 +27,18 @@ import { getPartnersForCourseWithNames } from '../backend/partnerService';
 
 const ChatThreadScreen = ({ route, navigation }) => {
   const { thread } = route.params;
+  
+  // This is tate management
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
   const flatListRef = useRef(null);
 
+  // this is a real time listener
   useEffect(() => {
+    // messages by timestamp
     const q = query(collection(db, 'chats', thread.id, 'messages'), orderBy('sentAt', 'asc'));
+    
+    // listening for real time updates
     const unsubscribe = onSnapshot(q, (snap) => {
       const list = snap.docs.map((doc) => {
         const d = doc.data();
@@ -48,7 +57,7 @@ const ChatThreadScreen = ({ route, navigation }) => {
     return () => unsubscribe();
   }, [thread.id]);
 
-  // Mark chat as read when component mounts and when it becomes focused
+  // This is marking chat as read
   useEffect(() => {
     const markAsRead = async () => {
       await markChatAsRead(thread.id, auth.currentUser.uid);
@@ -56,7 +65,6 @@ const ChatThreadScreen = ({ route, navigation }) => {
     
     markAsRead();
 
-    // Set up focus listener to mark as read when returning to this screen
     const unsubscribe = navigation.addListener('focus', () => {
       markAsRead();
     });
@@ -64,7 +72,7 @@ const ChatThreadScreen = ({ route, navigation }) => {
     return unsubscribe;
   }, [thread.id, navigation]);
 
-  // Mark as read when new messages arrive (if screen is active)
+  // mark as read if new messages arrive and the screen is active
   useEffect(() => {
     const markAsRead = async () => {
       if (messages.length > 0) {
@@ -72,21 +80,26 @@ const ChatThreadScreen = ({ route, navigation }) => {
       }
     };
     
-    // Small delay to ensure the message is fully processed
+    // a small delay for processing
     const timeoutId = setTimeout(markAsRead, 500);
     return () => clearTimeout(timeoutId);
   }, [messages.length, thread.id]);
 
   const handleSend = async () => {
     if (!message.trim()) return;
+    
+    // Adding this message to Firestore collection
     await addDoc(collection(db, 'chats', thread.id, 'messages'), {
       senderId: auth.currentUser.uid,
       text: message,
       sentAt: serverTimestamp(),
     });
+    
+    // clear
     setMessage('');
   };
 
+  // rendering individual texts
   const renderMessage = ({ item }) => (
     <View
       style={{
@@ -129,6 +142,7 @@ const ChatThreadScreen = ({ route, navigation }) => {
         keyboardVerticalOffset={90}
       >
         <View style={{ flex: 1 }}>
+          {/* Messages list */}
           <FlatList
             ref={flatListRef}
             data={messages}
@@ -157,6 +171,7 @@ const ChatThreadScreen = ({ route, navigation }) => {
                 marginRight: 10,
               }}
             />
+            {/* This is the send button */}
             <TouchableOpacity
               onPress={handleSend}
               style={{ backgroundColor: '#007AFF', padding: 10, borderRadius: 20 }}
