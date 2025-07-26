@@ -12,20 +12,24 @@ import {
 } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
 /**
- * Get user info by UID with enhanced name resolution
+ * Fetch detailed user info by UID.
+ * Resolves placeholders by checking match requests, partner records, and other sources.
+ * Updates Firestore with real info if found.
+ *
+ * @param {string} uid - User's unique identifier (UID)
+ * @returns {Promise<Object>} - Complete user object
  */
 export const getUserInfo = async (uid) => {
   try {
     console.log('Fetching user info for UID:', uid);
     
-    // First try to get from Firestore users collection
     const userDoc = await getDoc(doc(db, 'users', uid));
     if (userDoc.exists()) {
       const userData = userDoc.data();
       console.log('Found user in Firestore:', userData);
       
-      // If it's a placeholder or generic name, try to find better data
       if (userData.isPlaceholder || 
           userData.name?.includes('Unknown') || 
           userData.name?.includes('Study Partner') ||
@@ -33,7 +37,6 @@ export const getUserInfo = async (uid) => {
         console.log('Found placeholder user, attempting to find real name...');
         const realUserInfo = await findRealUserInfo(uid);
         if (realUserInfo && realUserInfo.name !== userData.name) {
-          // Update the document with better information
           const updatedData = { ...userData, ...realUserInfo, lastUpdated: serverTimestamp() };
           await setDoc(doc(db, 'users', uid), updatedData, { merge: true });
           return updatedData;
@@ -45,7 +48,6 @@ export const getUserInfo = async (uid) => {
     
     console.log('User not found in Firestore for UID:', uid);
     
-    // Try to get from Firebase Auth if it's the current user
     if (auth.currentUser && auth.currentUser.uid === uid) {
       const authUser = auth.currentUser;
       console.log('Using current auth user data:', {
@@ -65,7 +67,6 @@ export const getUserInfo = async (uid) => {
       return userData;
     }
     
-    // Try to find real user info from other sources
     const realUserInfo = await findRealUserInfo(uid);
     if (realUserInfo) {
       await setDoc(doc(db, 'users', uid), realUserInfo);
@@ -73,7 +74,6 @@ export const getUserInfo = async (uid) => {
       return realUserInfo;
     }
     
-    // Last resort: return a descriptive placeholder
     const fallbackData = {
       name: `Student ${uid.slice(0, 8)}`,
       computingId: uid.slice(0, 8),
@@ -97,7 +97,11 @@ export const getUserInfo = async (uid) => {
 };
 
 /**
- * Get current user's profile data
+ * Retrieves the current authenticated user's profile from Firestore.
+ * Creates a default profile if none exists.
+ *
+ * @returns {Promise<Object>} - User document with ID and data
+ * @throws {Error} - If no authenticated user is found
  */
 export const getCurrentUserProfile = async () => {
   try {
@@ -111,7 +115,6 @@ export const getCurrentUserProfile = async () => {
       return { id: currentUser.uid, ...userDoc.data() };
     }
 
-    // If no document exists, create one from auth data
     const userData = {
       name: currentUser.displayName || 'Your Name',
       email: currentUser.email || 'your.email@virginia.edu',
@@ -134,7 +137,18 @@ export const getCurrentUserProfile = async () => {
 };
 
 /**
- * Update user profile
+ * Updates the current user's profile in Firestore and optionally in Firebase Auth.
+ *
+ * @param {Object} profileData - Partial profile fields to update
+ * @param {string} [profileData.name]
+ * @param {string} [profileData.bio]
+ * @param {Array<string>} [profileData.courses]
+ * @param {Array<string>} [profileData.studyTimes]
+ * @param {string} [profileData.meetingPreference]
+ * @param {string} [profileData.selectedAvatar]
+ * @param {string} [profileData.photoURL]
+ * @returns {Promise<Object>} - Success message object
+ * @throws {Error} - If update fails or no authenticated user
  */
 export const updateUserProfile = async (profileData) => {
   try {
@@ -145,12 +159,10 @@ export const updateUserProfile = async (profileData) => {
 
     const { name, bio, courses, studyTimes, meetingPreference, selectedAvatar, photoURL } = profileData;
 
-    // Prepare update data
     const updateData = {
       lastUpdated: serverTimestamp(),
     };
 
-    // Only update fields that are provided
     if (name !== undefined) updateData.name = name;
     if (bio !== undefined) updateData.bio = bio;
     if (courses !== undefined) updateData.courses = courses;
@@ -159,18 +171,15 @@ export const updateUserProfile = async (profileData) => {
     if (selectedAvatar !== undefined) updateData.selectedAvatar = selectedAvatar;
     if (photoURL !== undefined) updateData.photoURL = photoURL;
     
-    // Update Firestore document
     await updateDoc(doc(db, 'users', currentUser.uid), updateData);
     console.log('Updated user profile in Firestore:', updateData);
 
-    // Update Firebase Auth displayName if name is being changed
     if (name !== undefined && name !== currentUser.displayName) {
       try {
         await updateProfile(currentUser, { displayName: name });
         console.log('Updated Firebase Auth displayName:', name);
       } catch (authError) {
         console.warn('Failed to update Firebase Auth displayName:', authError);
-        // Don't throw error here as Firestore update was successful
       }
     }
 
@@ -183,7 +192,11 @@ export const updateUserProfile = async (profileData) => {
 };
 
 /**
- * Find real user information from various sources in the database
+ * Attempts to reconstruct real user data by checking multiple collections.
+ * Used when Firestore user data is incomplete or generic.
+ *
+ * @param {string} uid - User UID to look up
+ * @returns {Promise<Object|null>} - Found user info or null if not found
  */
 const findRealUserInfo = async (uid) => {
   try {
@@ -330,7 +343,10 @@ const findRealUserInfo = async (uid) => {
 };
 
 /**
- * Ensure current user has a document in Firestore
+ * Ensures that the currently signed-in user has a Firestore user document.
+ * Creates one using Firebase Auth data if missing.
+ *
+ * @returns {Promise<Object|null>} - The user data created or found
  */
 export const ensureUserDocument = async () => {
   try {
@@ -370,7 +386,10 @@ export const ensureUserDocument = async () => {
 };
 
 /**
- * Force refresh all partner names by re-fetching user info
+ * Refreshes all partner user names connected to the current user.
+ * Updates names stored in the Firestore user documents.
+ *
+ * @returns {Promise<Object>} - Summary of updates performed
  */
 export const refreshAllPartnerNames = async () => {
   try {
@@ -442,7 +461,9 @@ export const refreshAllPartnerNames = async () => {
 };
 
 /**
- * Get all users (for debugging)
+ * Retrieves all users from Firestore (for admin/debugging).
+ *
+ * @returns {Promise<Array>} - List of all user documents
  */
 export const getAllUsers = async () => {
   try {
@@ -460,7 +481,9 @@ export const getAllUsers = async () => {
 };
 
 /**
- * Get all partners (for debugging)
+ * Retrieves all partner records from Firestore (for admin/debugging).
+ *
+ * @returns {Promise<Array>} - List of all partner documents
  */
 export const getAllPartners = async () => {
   try {
@@ -477,7 +500,12 @@ export const getAllPartners = async () => {
   }
 };
 
-// Keep the existing functions for backward compatibility
+/**
+ * Debugging utility to cross-check user and partner records.
+ *
+ * @param {string} currentUid - UID of current user
+ * @returns {Promise<Object|null>} - Report of user-partner data mismatch
+ */
 export const debugPartnersAndUsers = async (currentUid) => {
   try {
     const [users, partners] = await Promise.all([getAllUsers(), getAllPartners()]);
@@ -507,7 +535,11 @@ export const debugPartnersAndUsers = async (currentUid) => {
   }
 };
 
-// Update the forceRecreateUserDocuments to use the new refresh function
+/**
+ * Forces re-creation of user documents using fresh name data.
+ *
+ * @returns {Promise<Object>} - Result of forced recreation
+ */
 export const forceRecreateUserDocuments = async () => {
   try {
     const result = await refreshAllPartnerNames();
@@ -530,10 +562,13 @@ export const forceRecreateUserDocuments = async () => {
   }
 };
 
-
-/*
-*upload user profile pictures
-*/
+/**
+ * Uploads a profile picture for the user to Firebase Storage.
+ *
+ * @param {string} uid - User UID
+ * @param {Blob} fileBlob - Image file to upload
+ * @returns {Promise<string>} - Download URL of uploaded image
+ */
 export const uploadProfilePicture = async (uid, fileBlob) => {
   const storage = getStorage();
   const profilePicRef = ref(storage, `profilePics/${uid}.jpg`);
@@ -543,7 +578,13 @@ export const uploadProfilePicture = async (uid, fileBlob) => {
   return downloadURL;
 };
 
-// update user profile pictures
+/**
+ * Updates the user's Firestore document with the new photo URL.
+ *
+ * @param {string} uid - User UID
+ * @param {string} photoURL - New profile picture URL
+ * @returns {Promise<void>}
+ */
 export const updateUserPhotoURL = async (uid, photoURL) => {
   await updateDoc(doc(db, 'users', uid), {
     photoURL,

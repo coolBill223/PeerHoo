@@ -14,9 +14,15 @@ import {
 } from 'firebase/firestore';
 
 /**
- * Upload pdf or pictures
- * @param {Object} param0 - Including user id, title, course, notes link
- * @returns {string} new note's ID
+ * Uploads a media-based note (PDF or image).
+ * 
+ * @param {Object} param0 - Note data
+ * @param {string} param0.uid - Author's UID
+ * @param {string} param0.title - Note title
+ * @param {string} param0.course - Course code
+ * @param {string} param0.mediaURL - Link to media file
+ * @returns {Promise<string>} - ID of the new note
+ * @throws {Error} - If mediaURL is missing
  */
 export const uploadMediaNote = async ({ uid, title, course, mediaURL }) => {
   if (!mediaURL) throw new Error('mediaURL is required');
@@ -27,7 +33,7 @@ export const uploadMediaNote = async ({ uid, title, course, mediaURL }) => {
     course,
     mediaURL,
     createdAt: serverTimestamp(),
-    rating: 0, // default rating be 0
+    rating: 0, // Default rating
   };
 
   const docRef = await addDoc(collection(db, 'notes'), noteData);
@@ -35,18 +41,18 @@ export const uploadMediaNote = async ({ uid, title, course, mediaURL }) => {
 };
 
 /**
- * get notes by course - FIXED: Removed orderBy to avoid index requirement
+ * Retrieves all notes for a specific course, sorted by creation time (newest first).
+ * 
+ * @param {string} course - Course code
+ * @returns {Promise<Array>} - List of notes
  */
 export const getNotesByCourse = async (course) => {
   const q = query(
     collection(db, 'notes'),
-    where('course', '==', course)
-    // Removed orderBy - we'll sort in JavaScript instead
-  );
+    where('course', '==', course));
   const snap = await getDocs(q);
   const notes = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   
-  // Sort in JavaScript instead of Firestore
   return notes.sort((a, b) => {
     if (!a.createdAt && !b.createdAt) return 0;
     if (!a.createdAt) return 1;
@@ -56,26 +62,28 @@ export const getNotesByCourse = async (course) => {
 };
 
 /**
- * Search notes by course - NEW FUNCTION for search functionality
- * This is the same as getNotesByCourse but with a more explicit name for search
+ * Alias for getNotesByCourse, used in search contexts.
+ * 
+ * @param {string} course - Course code
+ * @returns {Promise<Array>} - List of notes
  */
 export const searchNotesByCourse = async (course) => {
   return await getNotesByCourse(course);
 };
 
 /**
- * get notes by specific user - FIXED: Removed orderBy to avoid index requirement
+ * Retrieves all notes authored by a specific user, sorted by creation time.
+ * 
+ * @param {string} uid - User ID
+ * @returns {Promise<Array>} - List of user's notes
  */
 export const getNotesByUser = async (uid) => {
   const q = query(
     collection(db, 'notes'),
-    where('authorId', '==', uid)
-    // Removed orderBy - we'll sort in JavaScript instead
-  );
+    where('authorId', '==', uid));
   const snap = await getDocs(q);
   const notes = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   
-  // Sort in JavaScript instead of Firestore
   return notes.sort((a, b) => {
     if (!a.createdAt && !b.createdAt) return 0;
     if (!a.createdAt) return 1;
@@ -85,7 +93,10 @@ export const getNotesByUser = async (uid) => {
 };
 
 /**
- * Search notes by title keyword - UPDATED: More efficient search
+ * Searches notes whose titles contain a specific keyword.
+ * 
+ * @param {string} keyword - Keyword to search
+ * @returns {Promise<Array>} - Matching notes
  */
 export const searchNotesByTitle = async (keyword) => {
   const snap = await getDocs(collection(db, 'notes'));
@@ -93,7 +104,6 @@ export const searchNotesByTitle = async (keyword) => {
     .map(doc => ({ id: doc.id, ...doc.data() }))
     .filter(note => note.title?.toLowerCase().includes(keyword.toLowerCase()));
   
-  // Sort search results too
   return notes.sort((a, b) => {
     if (!a.createdAt && !b.createdAt) return 0;
     if (!a.createdAt) return 1;
@@ -103,8 +113,10 @@ export const searchNotesByTitle = async (keyword) => {
 };
 
 /**
- * Search notes by course or title - NEW FUNCTION for comprehensive search
- * This function searches both course names and titles
+ * Searches notes where the title or course contains the keyword.
+ * 
+ * @param {string} searchTerm - Keyword to match
+ * @returns {Promise<Array>} - List of relevant notes
  */
 export const searchNotes = async (searchTerm) => {
   const snap = await getDocs(collection(db, 'notes'));
@@ -118,16 +130,12 @@ export const searchNotes = async (searchTerm) => {
       return titleMatch || courseMatch;
     });
   
-  // Sort search results by relevance (exact course matches first, then by date)
   return notes.sort((a, b) => {
     const aCourseMatch = a.course?.toLowerCase() === searchTermLower;
     const bCourseMatch = b.course?.toLowerCase() === searchTermLower;
-    
-    // Prioritize exact course matches
     if (aCourseMatch && !bCourseMatch) return -1;
     if (!aCourseMatch && bCourseMatch) return 1;
     
-    // Then sort by date
     if (!a.createdAt && !b.createdAt) return 0;
     if (!a.createdAt) return 1;
     if (!b.createdAt) return -1;
@@ -136,7 +144,11 @@ export const searchNotes = async (searchTerm) => {
 };
 
 /**
- * delete your own notes
+ * Deletes a note if the current user is the author.
+ * 
+ * @param {string} noteId - Note ID
+ * @param {string} currentUid - UID of the user requesting deletion
+ * @throws {Error} - If note not found or user is not the author
  */
 export const deleteNote = async (noteId, currentUid) => {
   const noteRef = doc(db, 'notes', noteId);
@@ -147,8 +159,10 @@ export const deleteNote = async (noteId, currentUid) => {
 };
 
 /**
- * Get available courses that match search term
- * Returns course information with note counts
+ * Retrieves available course names from existing notes based on a search term.
+ * 
+ * @param {string} searchTerm - Course name filter
+ * @returns {Promise<Array>} - Array of course info with note counts
  */
 export const getAvailableCourses = async (searchTerm) => {
   const snap = await getDocs(collection(db, 'notes'));
@@ -156,7 +170,6 @@ export const getAvailableCourses = async (searchTerm) => {
   
   const searchTermLower = searchTerm.toLowerCase();
   
-  // Group notes by course
   const courseMap = new Map();
   
   notes.forEach(note => {
@@ -165,7 +178,6 @@ export const getAvailableCourses = async (searchTerm) => {
     const course = note.course;
     const courseLower = course.toLowerCase();
     
-    // Check if course matches search term
     if (courseLower.includes(searchTermLower)) {
       if (!courseMap.has(course)) {
         courseMap.set(course, {
@@ -178,7 +190,6 @@ export const getAvailableCourses = async (searchTerm) => {
       const courseData = courseMap.get(course);
       courseData.noteCount++;
       
-      // Extract section if course is in format like "CS 2100 sec 1"
       const sectionMatch = course.match(/sec\s+(\w+)/i);
       if (sectionMatch) {
         courseData.sections.add(sectionMatch[1]);
@@ -186,7 +197,6 @@ export const getAvailableCourses = async (searchTerm) => {
     }
   });
   
-  // Convert to array and sort by course code
   const courses = Array.from(courseMap.values()).map(course => ({
     ...course,
     sections: Array.from(course.sections)
@@ -196,22 +206,21 @@ export const getAvailableCourses = async (searchTerm) => {
 };
   
 /**
- * Update note details (title, course)
- * @param {string} noteId - Note ID to update
- * @param {Object} updates - Object containing title and/or course
- * @param {string} currentUid - Current user ID for authorization
+ * Updates the title or course of an existing note.
+ * 
+ * @param {string} noteId - Note ID
+ * @param {Object} updates - Fields to update (title, course)
+ * @param {string|null} currentUid - Optional: verify that the updater is the author
  */
 export const updateNote = async (noteId, updates, currentUid = null) => {
   const noteRef = doc(db, 'notes', noteId);
   
-  // If currentUid is provided, verify ownership
   if (currentUid) {
     const snap = await getDoc(noteRef);
     if (!snap.exists()) throw new Error('Note not found');
     if (snap.data().authorId !== currentUid) throw new Error('Unauthorized update attempt');
   }
   
-  // Update the note with new data
   await updateDoc(noteRef, {
     ...updates,
     updatedAt: serverTimestamp(),
@@ -219,7 +228,11 @@ export const updateNote = async (noteId, updates, currentUid = null) => {
 };
 
 /**
- * get notes detail, preview
+ * Retrieves full detail of a specific note.
+ * 
+ * @param {string} noteId - Note ID
+ * @returns {Promise<Object>} - Note data
+ * @throws {Error} - If note not found
  */
 export const getNoteDetail = async (noteId) => {
   const snap = await getDoc(doc(db, 'notes', noteId));
@@ -228,10 +241,13 @@ export const getNoteDetail = async (noteId) => {
 };
 
 /**
- * Rate a note (each user can rate once)
- * @param {string} noteId - ID of the note
- * @param {number} ratingValue - A number between 1 and 5
- * @param {string} userId - Current user's UID
+ * Rates a note. One rating per user.
+ * 
+ * @param {string} noteId - Note ID
+ * @param {number} ratingValue - 1 to 5
+ * @param {string} userId - Current user UID
+ * @returns {Promise<number>} - Updated average rating
+ * @throws {Error} - If rating is outside 1–5
  */
 export const rateNote = async (noteId, ratingValue, userId) => {
   if (ratingValue < 1 || ratingValue > 5) {
@@ -241,19 +257,16 @@ export const rateNote = async (noteId, ratingValue, userId) => {
   const noteRef = doc(db, 'notes', noteId);
   const ratingRef = doc(db, 'notes', noteId, 'ratings', userId);
 
-  // Save or update the user's rating
   await setDoc(ratingRef, {
     userId,
     value: ratingValue,
     updatedAt: serverTimestamp(),
   });
 
-  // Recalculate average rating
   const ratingsSnap = await getDocs(collection(db, 'notes', noteId, 'ratings'));
   const ratings = ratingsSnap.docs.map(doc => doc.data().value);
   const avgRating = ratings.reduce((sum, val) => sum + val, 0) / ratings.length;
 
-  // Update the note's average rating
   await updateDoc(noteRef, {
     rating: avgRating,
   });
@@ -262,10 +275,12 @@ export const rateNote = async (noteId, ratingValue, userId) => {
 };
 
 /**
- * Add a comment to a note
- * @param {string} noteId - ID of the note
- * @param {string} userId - UID of the commenter
- * @param {string} content - Comment text
+ * Adds a comment to a note.
+ * 
+ * @param {string} noteId - Note ID
+ * @param {string} userId - Comment author's UID
+ * @param {string} content - Text content of the comment
+ * @throws {Error} - If comment is empty
  */
 export const addCommentToNote = async (noteId, userId, content) => {
   if (!content.trim()) throw new Error('Comment cannot be empty');
@@ -278,10 +293,12 @@ export const addCommentToNote = async (noteId, userId, content) => {
   });
 };
 
+
 /**
- * Get all comments for a note, sorted by time
- * @param {string} noteId - ID of the note
- * @returns {Array} list of comments
+ * Retrieves all comments for a given note, sorted by timestamp.
+ * 
+ * @param {string} noteId - Note ID
+ * @returns {Promise<Array>} - List of comments
  */
 export const getCommentsForNote = async (noteId) => {
   const q = query(collection(db, 'notes', noteId, 'comments'));
@@ -300,7 +317,12 @@ export const getCommentsForNote = async (noteId) => {
 };
 
 /**
- * Delete a comment from a note
+ * Deletes a comment from a note if the user is the author.
+ * 
+ * @param {string} noteId - Note ID
+ * @param {string} commentId - Comment ID
+ * @param {string} currentUid - UID of the deleting user
+ * @throws {Error} - If unauthorized or comment not found
  */
 export const deleteCommentFromNote = async (noteId, commentId, currentUid) => {
   const commentRef = doc(db, 'notes', noteId, 'comments', commentId);
@@ -313,11 +335,13 @@ export const deleteCommentFromNote = async (noteId, commentId, currentUid) => {
 };
 
 /**
- * Edit a comment from a note
+ * Edits an existing comment (only by the original author).
+ * 
  * @param {string} noteId - Note ID
  * @param {string} commentId - Comment ID
- * @param {string} currentUid - UID of the editor
- * @param {string} newContent - New comment content
+ * @param {string} currentUid - UID of the user editing
+ * @param {string} newContent - Updated comment text
+ * @throws {Error} - If unauthorized or invalid content
  */
 export const updateCommentOnNote = async (noteId, commentId, currentUid, newContent) => {
   const commentRef = doc(db, 'notes', noteId, 'comments', commentId);

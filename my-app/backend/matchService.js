@@ -14,7 +14,11 @@ import {
 import { createPartnerPair } from './partnerService';
 
 /**
- * Get current user's full info for storing in match requests
+ * Retrieves the current authenticated user's detailed profile information.
+ * Falls back to auth data if Firestore data is unavailable.
+ * 
+ * @returns {Promise<Object>} - User info: uid, name, email, computingId
+ * @throws {Error} - If no user is signed in
  */
 const getCurrentUserInfo = async () => {
   const currentUser = auth.currentUser;
@@ -22,7 +26,6 @@ const getCurrentUserInfo = async () => {
     throw new Error('No authenticated user');
   }
 
-  // Try to get user info from Firestore first
   try {
     const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
     if (userDoc.exists()) {
@@ -38,7 +41,7 @@ const getCurrentUserInfo = async () => {
     console.log('Could not fetch user from Firestore, using auth data');
   }
 
-  // Fallback to auth data
+  // Fallback if Firestore fails
   return {
     uid: currentUser.uid,
     name: currentUser.displayName || 'Unknown User',
@@ -48,9 +51,11 @@ const getCurrentUserInfo = async () => {
 };
 
 /**
- * Submit match request form with enhanced user data storage
- * @param {Object} param0 - senderId, course, studyTime, meetingPreference, bio
- * @returns {Promise<string>} - new application id
+ * Submits a new match request to Firestore.
+ * Stores sender info for display and filtering purposes.
+ * 
+ * @param {Object} param0 - Match request details
+ * @returns {Promise<string>} - ID of the newly created match request
  */
 export const sendMatchRequest = async ({
   senderId,
@@ -60,7 +65,6 @@ export const sendMatchRequest = async ({
   bio,
   professorName
 }) => {
-  // Get current user info to store with the match request
   const userInfo = await getCurrentUserInfo();
   
   const docRef = await addDoc(collection(db, 'matchRequests'), {
@@ -73,7 +77,6 @@ export const sendMatchRequest = async ({
     receiverId: null,
     status: 'pending',
     createdAt: serverTimestamp(),
-    // Store sender information for future reference
     senderName: userInfo.name,
     senderEmail: userInfo.email,
     senderComputingId: userInfo.computingId,
@@ -90,8 +93,10 @@ export const sendMatchRequest = async ({
 };
 
 /**
- * Get user's match requests
- * @param {string} uid
+ * Retrieves all match requests created by the current user.
+ * 
+ * @param {string} uid - User ID of the sender
+ * @returns {Promise<Array>} - List of match requests sent by the user
  */
 export const getMyMatchRequests = async (uid) => {
   const q = query(
@@ -103,8 +108,14 @@ export const getMyMatchRequests = async (uid) => {
 };
 
 /**
- * Get incoming match requests for a user - updated to include rejected applications
- * @param {string} uid
+ * Retrieves all incoming, pending, and rejected match requests relevant to the user.
+ * Includes:
+ *   - requests sent to the user
+ *   - user-sent requests that have a receiver
+ *   - requests the user applied to but were rejected
+ * 
+ * @param {string} uid - Current user's ID
+ * @returns {Promise<Array>} - List of relevant incoming requests
  */
 export const getIncomingMatchRequests = async (uid) => {
   const recvQ = query(
@@ -119,7 +130,6 @@ export const getIncomingMatchRequests = async (uid) => {
     where('status', '==', 'pending')
   );
 
-  // New query for rejected applications where user was the receiver
   const rejectedRecvQ = query(
     collection(db, 'matchRequests'),
     where('receiverId', '==', uid),
@@ -135,18 +145,18 @@ export const getIncomingMatchRequests = async (uid) => {
   const recv = recvSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const send = sendSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(m => m.receiverId); // Only include if someone has applied
+    .filter(m => m.receiverId); // Filter those that were applied to
   
-  // Include rejected applications where user was the receiver (applied to someone else's request)
   const rejectedRecv = rejectedRecvSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     
   return [...recv, ...send, ...rejectedRecv];
 };
 
 /**
- * Update match request status
- * @param {string} requestId
- * @param {'accepted' | 'rejected'} status
+ * Updates the status of a match request (accepted or rejected).
+ * 
+ * @param {string} requestId - ID of the match request
+ * @param {'accepted' | 'rejected'} status - New status to set
  */
 export const updateMatchRequestStatus = async (requestId, status) => {
   const ref = doc(db, 'matchRequests', requestId);
@@ -154,9 +164,12 @@ export const updateMatchRequestStatus = async (requestId, status) => {
 };
 
 /**
- * Get open match requests for a course (available for applying)
- * @param {string} courseCode
- * @param {string} uid  
+ * Retrieves all open (pending, unclaimed) match requests for a given course.
+ * Filters out any requests created by the current user.
+ * 
+ * @param {string} courseCode - Course code to search by (e.g., "CS 2100")
+ * @param {string} uid - Current user ID
+ * @returns {Promise<Array>} - List of open match requests
  */
 export const getOpenMatchRequests = async (courseCode, uid) => {
   const q = query(
@@ -172,17 +185,17 @@ export const getOpenMatchRequests = async (courseCode, uid) => {
 };
 
 /**
- * Apply to a match request with user info
- * @param {string} reqId
- * @param {string} uid
+ * Applies to an existing match request.
+ * Stores the current user's info as receiver metadata.
+ * 
+ * @param {string} reqId - ID of the match request
+ * @param {string} uid - UID of the user applying
  */
 export const applyToMatchRequest = async (reqId, uid) => {
-  // Get current user info to store as receiver
   const userInfo = await getCurrentUserInfo();
   
   await updateDoc(doc(db, 'matchRequests', reqId), {
     receiverId: uid,
-    // Store receiver information for future reference
     receiverName: userInfo.name,
     receiverEmail: userInfo.email,
     receiverComputingId: userInfo.computingId,
@@ -197,12 +210,15 @@ export const applyToMatchRequest = async (reqId, uid) => {
 };
 
 /**
- * Accept a match request and create partnership
+ * Accepts a match request and updates related pending requests.
+ * Automatically marks other matching requests for the same two users as accepted.
+ * Creates a partner record after acceptance.
+ * 
+ * @param {Object} req - Match request data (must include senderId, receiverId, course, id)
  */
 export const acceptMatchRequest = async (req) => {
   const { senderId, receiverId, course, id: clickedId } = req;
 
-  // Helper function to get the opposite uid for a given row
   const counterpart = (row) =>
     row.senderId === senderId ? receiverId : senderId;
 
@@ -219,12 +235,10 @@ export const acceptMatchRequest = async (req) => {
     const data = d.data();
     const docId = d.id;
 
-    // Same two users in either direction
     const samePair =
       (data.senderId === senderId && data.receiverId === receiverId) ||
       (data.senderId === receiverId && data.receiverId === senderId);
 
-    // Requests posted by either side but still open (receiverId == null)
     const openByEitherSide =
       (data.senderId === senderId && data.receiverId === null) ||
       (data.senderId === receiverId && data.receiverId === null);
@@ -234,13 +248,13 @@ export const acceptMatchRequest = async (req) => {
         updateDoc(doc(db, 'matchRequests', docId), {
           status: 'accepted',
           acceptedAt: serverTimestamp(),
-          receiverId: data.receiverId || counterpart(data), // fill if it was null
+          receiverId: data.receiverId || counterpart(data),
         })
       );
     }
   });
 
-  // Make sure the clicked doc (already pending) is also accepted
+  // Also accept the clicked match request
   updates.push(
     updateDoc(doc(db, 'matchRequests', clickedId), { 
       status: 'accepted',
@@ -250,7 +264,7 @@ export const acceptMatchRequest = async (req) => {
 
   await Promise.all(updates);
 
-  // Create the partnership with enhanced info
+   // Create official partnership
   await createPartnerPair({
     userA: senderId,
     userB: receiverId,
@@ -261,8 +275,9 @@ export const acceptMatchRequest = async (req) => {
 };
 
 /**
- * Reject a match request
- * @param {string} requestId
+ * Rejects a match request and logs the time of rejection.
+ * 
+ * @param {string} requestId - ID of the request to reject
  */
 export const rejectMatchRequest = async (requestId) => {
   await updateDoc(doc(db, 'matchRequests', requestId), {

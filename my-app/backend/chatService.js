@@ -2,37 +2,42 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, onSnapshot,
 import { db } from '../firebaseConfig';
 import { getPartnersForCourseWithNames } from './partnerService'
 
+/**
+ * Get an existing chat between two users, or create a new one if not found.
+ * Only creates a chat if the users are confirmed study partners.
+ * 
+ * @param {string} uid1 - UID of the first user
+ * @param {string} uid2 - UID of the second user
+ * @returns {Promise<string>} - The ID of the chat document
+ * @throws {Error} - If users are not partners
+ */
 export const getOrCreateChat = async (uid1, uid2) => {
-  // console.log(" Creating chat between:", uid1, uid2);
-
-  //check is partner
   const allCourses = await getPartnerCoursesBetween(uid1, uid2);
 
   if (allCourses.length === 0) {
     throw new Error('You are not study partners yet. Chat is only enabled after both users accept a match.');
   }
 
-  const participants = [uid1, uid2].sort();
+  const participants = [uid1, uid2].sort(); // sort to ensure consistent ordering
   const q = query(collection(db, 'chats'), where('participants', '==', participants));
   const existing = await getDocs(q);
 
   if (!existing.empty) {
-    return existing.docs[0].id;
+    return existing.docs[0].id;  // Return existing chat ID
   }
 
-  //create new chat room
+  // Create new chat document
   const newChat = await addDoc(collection(db, 'chats'), {
     participants,
     createdAt: new Date(),
     sharedCourses: allCourses,
-    // Initialize last read timestamps for each participant
     lastReadBy: {
       [uid1]: serverTimestamp(),
       [uid2]: serverTimestamp()
     }
   });
 
-  //create defult welcome message, to remind you have successfully add the partner
+  // Add a welcome message from the system
   await addDoc(collection(db, 'chats', newChat.id, 'messages'), {
     senderId: 'system',
     text: 'You are now connected with your study partner!',
@@ -41,13 +46,16 @@ export const getOrCreateChat = async (uid1, uid2) => {
   return newChat.id;
 };
 
+/**
+ * Returns a list of courses shared between two users if they are study partners.
+ * 
+ * @param {string} uid1 - First user's UID
+ * @param {string} uid2 - Second user's UID
+ * @returns {Promise<string[]>} - List of shared course names
+ */
 const getPartnerCoursesBetween = async (uid1, uid2) => {
   const q = query(collection(db, 'partners'));
   const snap = await getDocs(q);
-
-  // console.log("Loaded partners:");
-  // console.log(snap.docs.map(doc => doc.data()));
-  // console.log("Filtering between:", uid1, uid2);
 
   const matches = snap.docs
     .map((doc) => doc.data())
@@ -59,6 +67,13 @@ const getPartnerCoursesBetween = async (uid1, uid2) => {
   return matches.map((m) => m.course);
 };
 
+/**
+ * Sends a message to a specific chat.
+ * 
+ * @param {string} chatId - ID of the chat
+ * @param {string} senderId - UID of the message sender
+ * @param {string} text - Text content of the message
+ */
 export const sendMessage = async (chatId, senderId, text) => {
   const ref = collection(db, 'chats', chatId, 'messages');
   await addDoc(ref, {
@@ -68,6 +83,13 @@ export const sendMessage = async (chatId, senderId, text) => {
   });
 };
 
+/**
+ * Subscribes to real-time message updates in a chat.
+ * 
+ * @param {string} chatId - ID of the chat
+ * @param {Function} callback - Function to call with the latest messages
+ * @returns {Function} - Unsubscribe function
+ */
 export const listenToMessages = (chatId, callback) => {
   const q = query(
     collection(db, 'chats', chatId, 'messages'),
@@ -82,7 +104,12 @@ export const listenToMessages = (chatId, callback) => {
   });
 };
 
-// Mark messages as read when user opens a chat
+/**
+ * Updates the chat document to mark messages as read by a user.
+ * 
+ * @param {string} chatId - ID of the chat
+ * @param {string} userId - UID of the user who read the chat
+ */
 export const markChatAsRead = async (chatId, userId) => {
   try {
     const chatRef = doc(db, 'chats', chatId);
@@ -94,7 +121,13 @@ export const markChatAsRead = async (chatId, userId) => {
   }
 };
 
-// Get unread message count for a specific chat
+/**
+ * Calculates how many unread messages a user has in a chat.
+ * 
+ * @param {string} chatId - ID of the chat
+ * @param {string} userId - UID of the user
+ * @returns {Promise<number>} - Number of unread messages
+ */
 export const getUnreadCount = async (chatId, userId) => {
   try {
     const chatDoc = await getDoc(doc(db, 'chats', chatId));
@@ -103,7 +136,6 @@ export const getUnreadCount = async (chatId, userId) => {
     const chatData = chatDoc.data();
     const lastRead = chatData.lastReadBy?.[userId]?.toDate() || new Date(0);
     
-    // Get messages after last read time
     const messagesQuery = query(
       collection(db, 'chats', chatId, 'messages'),
       orderBy('sentAt', 'desc')
@@ -116,7 +148,6 @@ export const getUnreadCount = async (chatId, userId) => {
       const messageData = doc.data();
       const sentAt = messageData.sentAt?.toDate();
       
-      // Count messages sent after last read time and not by current user
       if (sentAt && sentAt > lastRead && messageData.senderId !== userId && messageData.senderId !== 'system') {
         unreadCount++;
       }
@@ -129,7 +160,13 @@ export const getUnreadCount = async (chatId, userId) => {
   }
 };
 
-// Listen to chat updates including read status
+/**
+ * Subscribes to updates to the chat document, including read status.
+ * 
+ * @param {string} chatId - ID of the chat
+ * @param {Function} callback - Function to call when chat data changes
+ * @returns {Function} - Unsubscribe function
+ */
 export const listenToChatUpdates = (chatId, callback) => {
   const chatRef = doc(db, 'chats', chatId);
   return onSnapshot(chatRef, (snapshot) => {

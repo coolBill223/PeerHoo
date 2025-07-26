@@ -15,7 +15,13 @@ import {
 import { getUserInfo } from './userService';
 
 /**
- * Create partner pair with enhanced user info storage
+ * Creates a partner record between two users for a specific course.
+ * Stores display names and computing IDs for efficient querying and fallback display.
+ *
+ * @param {Object} param0
+ * @param {string} param0.userA - First user's UID
+ * @param {string} param0.userB - Second user's UID
+ * @param {string} param0.course - Course code
  */
 export const createPartnerPair = async ({ userA, userB, course }) => {
   const q = query(collection(db, 'partners'), where('course', '==', course));
@@ -34,7 +40,6 @@ export const createPartnerPair = async ({ userA, userB, course }) => {
     return;
   }
 
-  // Get user info for both users to store with the partnership
   const [userAInfo, userBInfo] = await Promise.all([
     getUserInfo(userA),
     getUserInfo(userB)
@@ -46,7 +51,6 @@ export const createPartnerPair = async ({ userA, userB, course }) => {
     course,
     createdAt: serverTimestamp(),
     deleteRequestedBy: [],
-    // Store user names for easier querying and display
     userAName: userAInfo?.name || `Student ${userA.slice(0, 8)}`,
     userBName: userBInfo?.name || `Student ${userB.slice(0, 8)}`,
     userAComputingId: userAInfo?.computingId || userA.slice(0, 8),
@@ -59,7 +63,11 @@ export const createPartnerPair = async ({ userA, userB, course }) => {
 };
 
 /**
- * Get user's partners for one course
+ * Retrieves all partners of a user for a given course.
+ *
+ * @param {string} uid - User UID
+ * @param {string} course - Course code
+ * @returns {Promise<Array>} - List of partnership records
  */
 export const getPartnersForCourse = async (uid, course) => {
   const q = query(collection(db, 'partners'), where('course', '==', course));
@@ -70,8 +78,13 @@ export const getPartnersForCourse = async (uid, course) => {
     .filter((p) => p.userA === uid || p.userB === uid);
 };
 
+
 /**
- * Get partners for a specific course with user names (enhanced version)
+ * Same as getPartnersForCourse, but includes partner names and computing IDs.
+ *
+ * @param {string} uid - User UID
+ * @param {string} course - Course code
+ * @returns {Promise<Array>} - List of partners with name/computingId
  */
 export const getPartnersForCourseWithNames = async (uid, course) => {
   const partners = await getPartnersForCourse(uid, course);
@@ -80,7 +93,6 @@ export const getPartnersForCourseWithNames = async (uid, course) => {
     partners.map(async (partner) => {
       const partnerId = partner.userA === uid ? partner.userB : partner.userA;
       
-      // First try to use stored names from partnership data
       let partnerName = null;
       let partnerComputingId = null;
       
@@ -92,13 +104,11 @@ export const getPartnersForCourseWithNames = async (uid, course) => {
         partnerComputingId = partner.userAComputingId;
       }
       
-      // If no stored names, fetch from user service
       if (!partnerName) {
         const userInfo = await getUserInfo(partnerId);
         partnerName = userInfo?.name || `Student ${partnerId.slice(0, 8)}`;
         partnerComputingId = userInfo?.computingId || partnerId.slice(0, 8);
         
-        // Update the partnership document with the found names
         try {
           const updateData = {};
           if (partner.userA === partnerId) {
@@ -130,7 +140,12 @@ export const getPartnersForCourseWithNames = async (uid, course) => {
 };
 
 /**
- * Check if user can send match request (max 2 partners per course)
+ * Checks whether the user can send more match requests for a course.
+ * Users can have at most 2 partners per course.
+ *
+ * @param {string} uid - User UID
+ * @param {string} course - Course code
+ * @returns {Promise<boolean>}
  */
 export const canSendMatchRequest = async (uid, course) => {
   const partners = await getPartnersForCourse(uid, course);
@@ -138,7 +153,11 @@ export const canSendMatchRequest = async (uid, course) => {
 };
 
 /**
- * Request to delete a partnership
+ * Sends a delete request for a partnership.
+ * Deletes if both users have requested deletion.
+ *
+ * @param {string} partnerId - Partnership document ID
+ * @param {string} uid - UID of the requester
  */
 export const requestDeletePartner = async (partnerId, uid) => {
   const ref = doc(db, 'partners', partnerId);
@@ -152,12 +171,10 @@ export const requestDeletePartner = async (partnerId, uid) => {
   const partnerData = partnerDoc.data();
   const current = partnerData.deleteRequestedBy || [];
 
-  // Add delete request if not already requested
   if (!current.includes(uid)) {
     const updated = [...current, uid];
 
     if (updated.length >= 2) {
-      // If both users request to delete, then delete
       await deleteDoc(ref);
       console.log('Partnership deleted by mutual request:', partnerId);
     } else {
@@ -168,7 +185,10 @@ export const requestDeletePartner = async (partnerId, uid) => {
 };
 
 /**
- * Get all accepted partners for a user with enhanced name resolution
+ * Retrieves all accepted partnerships for a user, with updated names.
+ *
+ * @param {string} uid - User UID
+ * @returns {Promise<Array>} - List of partner records
  */
 export const getAcceptedPartners = async (uid) => {
   const q = query(collection(db, 'partners'));
@@ -182,7 +202,6 @@ export const getAcceptedPartners = async (uid) => {
     partners.map(async (p) => {
       const partnerId = p.userA === uid ? p.userB : p.userA;
       
-      // First try to use stored names from partnership data
       let partnerName = null;
       let partnerComputingId = null;
       
@@ -194,7 +213,6 @@ export const getAcceptedPartners = async (uid) => {
         partnerComputingId = p.userAComputingId;
       }
       
-      // If no stored names or they look like placeholders, fetch fresh data
       if (!partnerName || 
           partnerName.includes('Unknown') || 
           partnerName.includes('Study Partner') ||
@@ -205,7 +223,6 @@ export const getAcceptedPartners = async (uid) => {
         const freshName = userInfo?.name || `Student ${partnerId.slice(0, 8)}`;
         const freshComputingId = userInfo?.computingId || partnerId.slice(0, 8);
         
-        // Update the partnership document with better names if we found them
         if (freshName !== partnerName && !freshName.includes('Unknown')) {
           try {
             const updateData = {};
@@ -242,7 +259,6 @@ export const getAcceptedPartners = async (uid) => {
     })
   );
 
-  // Sort by course first, then by partner name
   return partnersWithNames.sort((a, b) => {
     const courseCompare = a.course.localeCompare(b.course);
     if (courseCompare !== 0) return courseCompare;
@@ -251,7 +267,11 @@ export const getAcceptedPartners = async (uid) => {
 };
 
 /**
- * Force refresh all partnership names
+ * Refreshes all partnership names for a given user.
+ * Useful if display names have changed.
+ *
+ * @param {string} uid - User UID
+ * @returns {Promise<Object>} - Summary of refresh result
  */
 export const refreshAllPartnershipNames = async (uid) => {
   try {
@@ -266,7 +286,6 @@ export const refreshAllPartnershipNames = async (uid) => {
     
     const refreshPromises = userPartnerships.map(async (partnership) => {
       try {
-        // Get fresh user info for both users in the partnership
         const [userAInfo, userBInfo] = await Promise.all([
           getUserInfo(partnership.userA),
           getUserInfo(partnership.userB)
@@ -281,9 +300,7 @@ export const refreshAllPartnershipNames = async (uid) => {
         };
         
         await updateDoc(doc(db, 'partners', partnership.id), updateData);
-        
         console.log(`Refreshed partnership ${partnership.id}:`, updateData);
-        
         return {
           partnershipId: partnership.id,
           course: partnership.course,
@@ -315,7 +332,10 @@ export const refreshAllPartnershipNames = async (uid) => {
 };
 
 /**
- * blocking partners
+ * Blocks a partner (one-way).
+ *
+ * @param {string} partnershipId - Partnership document ID
+ * @param {string} uid - UID of the user blocking
  */
 export const blockPartner = async (partnershipId, uid) => {
   const ref = doc(db, 'partners', partnershipId);
@@ -332,7 +352,10 @@ export const blockPartner = async (partnershipId, uid) => {
 };
 
 /**
- * unblocking partners
+ * Unblocks a previously blocked partner.
+ *
+ * @param {string} partnershipId - Partnership document ID
+ * @param {string} uid - UID of the user unblocking
  */
 export const unblockPartner = async (partnershipId, uid) => {
   const ref = doc(db, 'partners', partnershipId);
@@ -342,14 +365,17 @@ export const unblockPartner = async (partnershipId, uid) => {
   const data = docSnap.data();
   const blockedBy = data.blockedBy || [];
 
-  // Remove the user from the blockedBy array
   const updatedBlockedBy = blockedBy.filter(id => id !== uid);
   
   await updateDoc(ref, { blockedBy: updatedBlockedBy });
 };
 
 /**
- * check if the partner is blocked or not
+ * Checks whether a user has blocked a partnership.
+ *
+ * @param {string} partnershipId - Partnership document ID
+ * @param {string} uid - UID to check
+ * @returns {Promise<boolean>}
  */
 export const isPartnerBlocked = async (partnershipId, uid) => {
   const ref = doc(db, 'partners', partnershipId);
@@ -362,19 +388,21 @@ export const isPartnerBlocked = async (partnershipId, uid) => {
 };
 
 /**
- * report system - FIXED VERSION
+ * Submits a report for inappropriate behavior in a partnership.
+ *
+ * @param {string} partnershipId - Partnership ID
+ * @param {string} reporterId - UID of the reporting user
+ * @param {string} reason - Reason for the report
  */
 export const reportPartner = async (partnershipId, reporterId, reason) => {
   const ref = doc(db, 'partners', partnershipId);
   
-  // Create report object with current timestamp (not serverTimestamp)
   const newReport = {
     reporterId,
     reason,
-    reportedAt: new Date(), // ✅ Use regular Date instead of serverTimestamp()
+    reportedAt: new Date(),  // Not serverTimestamp for client consistency
   };
 
-  // Use arrayUnion to add the report efficiently
   await updateDoc(ref, {
     reports: arrayUnion(newReport)
   });
