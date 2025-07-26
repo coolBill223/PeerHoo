@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
+import { forgotPassword } from '../backend/authService';
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -51,6 +52,34 @@ const LoginScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+
+  const handleForgotPassword = () => {
+    if (!email) {
+      Alert.alert('Reset Password', 'Please enter your email first.');
+      return;
+    }
+
+    Alert.alert(
+      'Reset Password',
+      `Send a password reset link to:\n${email}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: async () => {
+            try {
+              await forgotPassword(email);
+              Alert.alert('Success', 'Reset email sent. Check your inbox.');
+            } catch (error) {
+              console.error('Forgot password error:', error);
+              Alert.alert('Error', 'Failed to send reset email.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -117,9 +146,14 @@ const LoginScreen = ({ navigation }) => {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.forgotPassword} disabled={loading}>
+            <TouchableOpacity 
+              style={styles.forgotPassword}
+              onPress={handleForgotPassword}
+              disabled={loading}
+            >
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
+
           </View>
 
           <View style={styles.footer}>

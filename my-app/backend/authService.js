@@ -1,4 +1,4 @@
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import { collection, query, where, getDocs, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 
@@ -42,4 +42,9 @@ export const registerUser = async ({ email, password, name, computingId }) => {
   });
   
   return user;
+};
+
+//sned email when forget password
+export const forgotPassword = async (email) => {
+  await sendPasswordResetEmail(auth, email);
 };
