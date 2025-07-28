@@ -557,17 +557,6 @@ const PartnerProfileScreen = ({ route, navigation }) => {
               </View>
             )}
 
-            {/* Course */}
-            {partnerData.course && (
-              <View style={styles.contactItem}>
-                <Ionicons name="book" size={16} color="#666" />
-                <Text style={styles.contactLabel}>Course:</Text>
-                <Text style={styles.contactValue}>
-                  {partnerData.course}
-                </Text>
-              </View>
-            )}
-
           </View>
         </View>
 
@@ -592,15 +581,7 @@ const PartnerProfileScreen = ({ route, navigation }) => {
               </View>
             </View>
             
-            {partnerData.course && (
-              <View style={styles.statusItem}>
-                <Ionicons name="school" size={24} color="#007AFF" />
-                <View style={styles.statusText}>
-                  <Text style={styles.statusLabel}>Shared Course</Text>
-                  <Text style={styles.statusValue}>{partnerData.course}</Text>
-                </View>
-              </View>
-            )}
+
 
             {fullPartnerInfo?.createdAt && (
               <View style={styles.statusItem}>
