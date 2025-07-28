@@ -1,7 +1,7 @@
 // The purpose of this file: This is for the individual chat conversation screen that displays messages
 
 // Imports
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -28,10 +28,35 @@ import { getPartnersForCourseWithNames } from '../backend/partnerService';
 const ChatThreadScreen = ({ route, navigation }) => {
   const { thread } = route.params;
   
-  // This is tate management
+  // This is state management
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
   const flatListRef = useRef(null);
+
+  // Set up custom header with back button if coming from partner profile
+  useLayoutEffect(() => {
+    if (thread?.canGoBackToProfile && thread?.partnerData) {
+      navigation.setOptions({
+        headerLeft: () => (
+          <TouchableOpacity
+            onPress={() => {
+              // Go back to the previous screen instead of creating a new one
+              navigation.goBack();
+            }}
+            style={{ 
+              marginLeft: 10, 
+              padding: 8,
+              flexDirection: 'row',
+              alignItems: 'center'
+            }}
+          >
+            <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          </TouchableOpacity>
+        ),
+        headerTitle: thread.name || 'Chat',
+      });
+    }
+  }, [navigation, thread]);
 
   // this is a real time listener
   useEffect(() => {

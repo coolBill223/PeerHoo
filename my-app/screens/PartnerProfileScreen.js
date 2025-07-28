@@ -414,20 +414,28 @@ const PartnerProfileScreen = ({ route, navigation }) => {
                   try {
                     const chatId = await getOrCreateChat(currentUser.uid, partnerId);
 
+                    // Store partner info for potential return navigation
+                    const threadData = {
+                      id: chatId,
+                      name: partnerData.partnerName || partnerData.name,
+                      // Store return navigation info
+                      canGoBackToProfile: true,
+                      partnerData: partner
+                    };
+
+                    // Use navigate instead of replace to maintain proper stack
                     navigation.navigate('MainTabs', {
                       screen: 'Chat',
                       params: {
                         screen: 'ChatThread',
                         params: {
-                          thread: {
-                            id: chatId,
-                            name: partnerData.partnerName || partnerData.name,
-                          },
+                          thread: threadData,
                         },
                       },
                     });
                   } catch (error) {
                     console.error('Failed to start chat:', error);
+                    Alert.alert('Error', 'Failed to start chat. Please try again.');
                   }
                 }}
                 style={styles.chatIconButton}
