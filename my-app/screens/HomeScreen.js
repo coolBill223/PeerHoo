@@ -2,7 +2,7 @@
 
 // Imports
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { ensureUserDocument } from '../backend/userService';
 import { getNotesByUser } from '../backend/noteService';
 import { getUserInfo } from '../backend/userService';
 import { getMyMatchRequests } from '../backend/matchService';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, orderBy, limit } from 'firebase/firestore';
 import { getUnreadCount } from '../backend/chatService';
 
 // this is the tip bank
@@ -46,6 +46,9 @@ const HomeScreen = ({ navigation }) => {
   const [userNotes, setUserNotes] = useState([]);
   const [userCourseCount, setUserCourseCount] = useState(0);
   const [currentTip, setCurrentTip] = useState('');
+  const [recentMessages, setRecentMessages] = useState([]);
+  const [partnersWithTimestamps, setPartnersWithTimestamps] = useState([]);
+  const intervalRef = useRef(null);
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -80,6 +83,127 @@ const HomeScreen = ({ navigation }) => {
     initializeUser();
   }, []);
 
+  // Set up interval to refresh messages periodically
+  useEffect(() => {
+    if (auth.currentUser?.uid) {
+      // Load messages immediately
+      loadRecentMessages(auth.currentUser.uid);
+      
+      // Set up interval to reload messages every 10 seconds
+      intervalRef.current = setInterval(() => {
+        if (auth.currentUser?.uid) {
+          loadRecentMessages(auth.currentUser.uid);
+        }
+      }, 10000); // 10 seconds
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [partners.length]); // Restart interval when partners change
+
+  // Load recent messages for activity timeline
+  const loadRecentMessages = async (uid) => {
+    try {
+      console.log('🔄 Loading recent messages for activity...');
+      
+      // Get all chats where user is a participant
+      const chatsQuery = query(
+        collection(db, 'chats'), 
+        where('participants', 'array-contains', uid)
+      );
+      
+      const chatDocs = await getDocs(chatsQuery);
+      console.log(`📱 Found ${chatDocs.docs.length} chats`);
+      
+      const messages = [];
+      const blockedPartnerIds = new Set(blockedPartners.map(p => p.partnerId || p.id));
+
+      // Get recent messages from each chat
+      for (const chatDoc of chatDocs.docs) {
+        const chatData = chatDoc.data();
+        const otherUserId = chatData.participants.find(id => id !== uid);
+        
+        // Skip blocked partners
+        if (blockedPartnerIds.has(otherUserId)) {
+          console.log(`⏭️ Skipping blocked partner: ${otherUserId}`);
+          continue;
+        }
+        
+        // Get the partner name
+        let partnerName = 'Study Partner';
+        const partner = partners.find(p => 
+          p.partnerId === otherUserId || 
+          p.id === otherUserId ||
+          p.partnerUserId === otherUserId
+        );
+        
+        if (partner) {
+          partnerName = partner.partnerName || partner.name || 'Study Partner';
+        } else {
+          // Fallback: try to get user info
+          try {
+            const userInfo = await getUserInfo(otherUserId);
+            partnerName = userInfo?.name || `Partner ${otherUserId.slice(0, 6)}`;
+          } catch (error) {
+            console.log('Could not get partner name:', error);
+            partnerName = `Partner ${otherUserId.slice(0, 6)}`;
+          }
+        }
+
+        // Get recent messages from this chat (last 5 messages to ensure we catch recent ones)
+        const messagesQuery = query(
+          collection(db, 'chats', chatDoc.id, 'messages'),
+          orderBy('sentAt', 'desc'), // Fixed: use 'sentAt' instead of 'timestamp'
+          limit(5)
+        );
+        
+        const messageDocs = await getDocs(messagesQuery);
+        console.log(`💬 Found ${messageDocs.docs.length} messages in chat ${chatDoc.id}`);
+        
+        // Add each recent message, but only messages from others
+        messageDocs.docs.forEach(messageDoc => {
+          const messageData = messageDoc.data();
+          const isFromOther = messageData.senderId !== uid;
+          
+          console.log(`📝 Message from ${messageData.senderId}, isFromOther: ${isFromOther}, sentAt: ${messageData.sentAt?.toDate()}`);
+          
+          // Only add messages from other users (not our own messages) and exclude system messages
+          if (isFromOther && messageData.sentAt && messageData.senderId !== 'system') {
+            messages.push({
+              type: 'message',
+              title: `Message from ${partnerName}`,
+              timestamp: messageData.sentAt, // Use sentAt as timestamp
+              chatId: chatDoc.id,
+              partnerName,
+              senderId: messageData.senderId,
+              isFromOther: true,
+              messageText: messageData.text || 'New message'
+            });
+          }
+        });
+      }
+
+      // Sort messages by timestamp (most recent first)
+      messages.sort((a, b) => {
+        if (!a.timestamp || !b.timestamp) return 0;
+        return b.timestamp.toDate() - a.timestamp.toDate();
+      });
+
+      // Keep only the 3 most recent messages from others
+      const recentMessagesFromOthers = messages.slice(0, 3);
+      console.log(`✅ Setting ${recentMessagesFromOthers.length} recent messages:`, 
+        recentMessagesFromOthers.map(m => `${m.title} - ${m.timestamp?.toDate()}`));
+      
+      setRecentMessages(recentMessagesFromOthers);
+    } catch (error) {
+      console.error('❌ Error loading recent messages:', error);
+      setRecentMessages([]);
+    }
+  };
+
   // Load partners and filter out blocked ones
   const loadPartnersData = async (uid) => {
     try {
@@ -101,9 +225,15 @@ const HomeScreen = ({ navigation }) => {
       
       setPartners(activePartners);
       setBlockedPartners(blocked);
+
+      // Get partnership creation timestamps
+      await loadPartnershipTimestamps(uid, activePartners);
       
       // Now I will load unread messages
       await loadUnreadMessageCount(uid, activePartners, blocked);
+      
+      // Load recent messages after partners are loaded
+      await loadRecentMessages(uid);
       
       console.log(`Loaded ${activePartners.length} active partners, ${blocked.length} blocked partners`);
     } catch (error) {
@@ -111,6 +241,31 @@ const HomeScreen = ({ navigation }) => {
       setPartners([]);
       setBlockedPartners([]);
       setTotalUnreadMessages(0);
+    }
+  };
+
+  // Load partnership timestamps from match requests
+  const loadPartnershipTimestamps = async (uid, activePartners) => {
+    try {
+      const matchRequests = await getMyMatchRequests(uid);
+      
+      const partnersWithTime = activePartners.map(partner => {
+        // Find the match request for this partnership
+        const matchRequest = matchRequests.find(req => 
+          (req.senderId === uid && req.receiverId === partner.partnerId) ||
+          (req.receiverId === uid && req.senderId === partner.partnerId)
+        );
+        
+        return {
+          ...partner,
+          matchTimestamp: matchRequest?.createdAt || null
+        };
+      });
+
+      setPartnersWithTimestamps(partnersWithTime);
+    } catch (error) {
+      console.error('Error loading partnership timestamps:', error);
+      setPartnersWithTimestamps(activePartners);
     }
   };
 
@@ -245,6 +400,7 @@ const HomeScreen = ({ navigation }) => {
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       if (auth.currentUser?.uid) {
+        console.log('🎯 Screen focused - reloading all data');
         loadUserProfile(auth.currentUser.uid);
         loadPartnersData(auth.currentUser.uid);
         loadUserNotes(auth.currentUser.uid);
@@ -284,53 +440,88 @@ const HomeScreen = ({ navigation }) => {
     });
   };
 
-  // here I will be getting recent activity from actual data
+  // here I will be getting recent activity from actual data with real timestamps
   const getRecentActivity = () => {
     const activities = [];
     
-    // recent notes
-    const recentNotes = userNotes.slice(0, 2);
+    // Add recent notes with real timestamps
+    const recentNotes = userNotes
+      .filter(note => note.createdAt) // Only notes with timestamps
+      .sort((a, b) => b.createdAt.toDate() - a.createdAt.toDate()) // Sort by newest first
+      .slice(0, 2); // Take only 2 most recent
+    
     recentNotes.forEach(note => {
-      const timeAgo = note.createdAt ? getTimeAgo(note.createdAt.toDate()) : 'Recently';
+      const timeAgo = getTimeAgo(note.createdAt.toDate());
       activities.push({
         type: 'note',
         title: `${note.course} - ${note.title} uploaded`,
-        time: timeAgo
+        time: timeAgo,
+        timestamp: note.createdAt.toDate()
       });
     });
     
-    // recent partners not th eblocked ones
-    const recentPartners = partners.slice(0, 1);
+    // Add recent partnerships with real timestamps
+    const recentPartners = partnersWithTimestamps
+      .filter(partner => partner.matchTimestamp) // Only partners with timestamps
+      .sort((a, b) => b.matchTimestamp.toDate() - a.matchTimestamp.toDate()) // Sort by newest first
+      .slice(0, 1); // Take only 1 most recent
+    
     recentPartners.forEach(partner => {
+      const timeAgo = getTimeAgo(partner.matchTimestamp.toDate());
       activities.push({
         type: 'match',
         title: `New study partner: ${partner.partnerName}`,
-        time: '1 day ago'
+        time: timeAgo,
+        timestamp: partner.matchTimestamp.toDate()
       });
     });
     
-    if (partners.length > 0) {
-      activities.push({
-        type: 'message',
-        title: `Message from ${partners[0].partnerName}`,
-        time: '2 days ago'
-      });
-    }
+    // Add recent messages with real timestamps
+    console.log(`📊 Processing ${recentMessages.length} recent messages for activity`);
+    recentMessages.forEach(message => {
+      if (message.timestamp) {
+        const timeAgo = getTimeAgo(message.timestamp.toDate());
+        activities.push({
+          type: 'message',
+          title: message.title,
+          time: timeAgo,
+          timestamp: message.timestamp.toDate()
+        });
+      }
+    });
     
-    return activities.slice(0, 3); // Limit to 3 activities
+    // Sort all activities by timestamp (newest first) and take top 3
+    const sortedActivities = activities
+      .filter(activity => activity.timestamp) // Only activities with timestamps
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 3);
+    
+    console.log(`📈 Final activities:`, sortedActivities.map(a => `${a.type}: ${a.title} - ${a.time}`));
+    return sortedActivities;
   };
 
   // this gets the time ago
   const getTimeAgo = (date) => {
     const now = new Date();
-    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+    const diffInMinutes = Math.floor((now - date) / (1000 * 60));
     
-    if (diffInHours < 1) return 'Just now';
-    if (diffInHours < 24) return `${diffInHours} hours ago`;
+    if (diffInMinutes < 1) return 'Just now';
+    if (diffInMinutes < 60) return `${diffInMinutes} minute${diffInMinutes === 1 ? '' : 's'} ago`;
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours} hour${diffInHours === 1 ? '' : 's'} ago`;
     
     const diffInDays = Math.floor(diffInHours / 24);
     if (diffInDays === 1) return '1 day ago';
     if (diffInDays < 7) return `${diffInDays} days ago`;
+    
+    const diffInWeeks = Math.floor(diffInDays / 7);
+    if (diffInWeeks === 1) return '1 week ago';
+    if (diffInWeeks < 4) return `${diffInWeeks} weeks ago`;
+    
+    const diffInMonths = Math.floor(diffInDays / 30);
+    if (diffInMonths === 1) return '1 month ago';
+    if (diffInMonths < 12) return `${diffInMonths} months ago`;
     
     return date.toLocaleDateString();
   };
