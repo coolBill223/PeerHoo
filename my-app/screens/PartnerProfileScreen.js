@@ -423,15 +423,13 @@ const PartnerProfileScreen = ({ route, navigation }) => {
                       partnerData: partner
                     };
 
-                    // Use navigate instead of replace to maintain proper stack
-                    navigation.navigate('MainTabs', {
-                      screen: 'Chat',
-                      params: {
-                        screen: 'ChatThread',
-                        params: {
-                          thread: threadData,
-                        },
-                      },
+                    // Navigate to ChatThread within the current stack instead of switching tabs
+                    navigation.navigate('ChatThread', {
+                      thread: threadData,
+                      // Add flag to indicate we came from partner profile
+                      fromPartnerProfile: true,
+                      // Store the partner data to return to
+                      returnToPartnerProfile: partner
                     });
                   } catch (error) {
                     console.error('Failed to start chat:', error);

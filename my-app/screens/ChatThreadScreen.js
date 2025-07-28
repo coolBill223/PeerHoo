@@ -1,7 +1,7 @@
 // The purpose of this file: This is for the individual chat conversation screen that displays messages
 
 // Imports
-import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -33,14 +33,17 @@ const ChatThreadScreen = ({ route, navigation }) => {
   const [message, setMessage] = useState('');
   const flatListRef = useRef(null);
 
-  // Set up custom header with back button if coming from partner profile
-  useLayoutEffect(() => {
-    if (thread?.canGoBackToProfile && thread?.partnerData) {
+  // Set up custom header based on navigation source - using useEffect instead of useLayoutEffect
+  useEffect(() => {
+    // Check if we came from partner profile
+    if (route.params?.fromPartnerProfile) {
       navigation.setOptions({
+        headerShown: true,
+        title: thread.name || 'Chat',
         headerLeft: () => (
           <TouchableOpacity
             onPress={() => {
-              // Go back to the previous screen instead of creating a new one
+              // Go back to the partner profile
               navigation.goBack();
             }}
             style={{ 
@@ -53,10 +56,14 @@ const ChatThreadScreen = ({ route, navigation }) => {
             <Ionicons name="arrow-back" size={24} color="#007AFF" />
           </TouchableOpacity>
         ),
-        headerTitle: thread.name || 'Chat',
+      });
+    } else {
+      // Default header for chat accessed from chat tab
+      navigation.setOptions({
+        title: thread.name || 'Chat',
       });
     }
-  }, [navigation, thread]);
+  }, [navigation, thread, route.params?.fromPartnerProfile]);
 
   // this is a real time listener
   useEffect(() => {

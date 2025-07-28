@@ -7,7 +7,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from './firebaseConfig';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { getUnreadCount } from './backend/chatService';
-import { View, Text } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import 'react-native-gesture-handler';
 
 // Import screens
@@ -21,6 +21,7 @@ import NotesScreen from './screens/NotesScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import PartnerProfileScreen from './screens/PartnerProfileScreen';
 import BlockedPartnersScreen from './screens/BlockedPartners';
+import ChatThreadScreen from './screens/ChatThreadScreen';
 import { getAcceptedPartners, isPartnerBlocked } from './backend/partnerService';
 
 const Stack = createStackNavigator();
@@ -272,6 +273,14 @@ function MainStackNavigator() {
         component={BlockedPartnersScreen}
         options={{
           presentation: 'card',
+        }}
+      />
+      {/* Add ChatThread to the main stack so it can be accessed from partner profile */}
+      <Stack.Screen 
+        name="ChatThread" 
+        component={ChatThreadScreen}
+        options={{
+          headerShown: false, // We'll handle header in the component
         }}
       />
     </Stack.Navigator>
