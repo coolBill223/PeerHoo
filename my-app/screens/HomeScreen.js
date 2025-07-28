@@ -209,12 +209,26 @@ const HomeScreen = ({ navigation }) => {
     try {
       const allPartners = await getAcceptedPartners(uid);
       
-      // Check blocked status for each partner
+      // Check blocked status for each partner AND get current user info
       const partnerStatusPromises = allPartners.map(async (partner) => {
         const isBlocked = await isPartnerBlocked(partner.id, uid);
+        
+        // Fetch current user information to get updated name
+        let currentUserInfo = null;
+        try {
+          currentUserInfo = await getUserInfo(partner.partnerId || partner.id);
+        } catch (error) {
+          console.log('Could not fetch current user info for partner:', partner.partnerId || partner.id);
+        }
+        
         return {
           ...partner,
-          isBlocked
+          isBlocked,
+          // Use current name from user document, fallback to partner data
+          partnerName: currentUserInfo?.name || partner.partnerName || partner.name || 'Study Partner',
+          // Also update other info that might have changed
+          partnerComputingId: currentUserInfo?.computingId || partner.partnerComputingId || partner.computingId,
+          currentUserInfo
         };
       });
       
