@@ -6,6 +6,7 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Dimensions,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -17,10 +18,14 @@ const WelcomeScreen = ({ navigation }) => {
       <View style={styles.content}>
         {/* Hero Section */}
         <View style={styles.heroSection}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="school" size={60} color="#007AFF" />
+          <Text style={styles.welcomeText}>Welcome to</Text>
+          <View style={styles.logoContainer}>
+            <Image 
+              source={require('../assets/PeerHoo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
           </View>
-          <Text style={styles.title}>StudyMate</Text>
           <Text style={styles.subtitle}>Connect • Study • Succeed</Text>
           <Text style={styles.description}>
             Find study partners, share notes, and excel in your courses together
@@ -30,15 +35,15 @@ const WelcomeScreen = ({ navigation }) => {
         {/* Simple Features List */}
         <View style={styles.featuresSection}>
           <View style={styles.featureItem}>
-            <Ionicons name="people" size={20} color="#007AFF" />
+            <Ionicons name="people" size={20} color="#FF6B35" />
             <Text style={styles.featureText}>Match with study partners</Text>
           </View>
           <View style={styles.featureItem}>
-            <Ionicons name="document-text" size={20} color="#007AFF" />
+            <Ionicons name="document-text" size={20} color="#FF6B35" />
             <Text style={styles.featureText}>Share course materials</Text>
           </View>
           <View style={styles.featureItem}>
-            <Ionicons name="chatbubble" size={20} color="#007AFF" />
+            <Ionicons name="chatbubble" size={20} color="#FF6B35" />
             <Text style={styles.featureText}>Real-time collaboration</Text>
           </View>
         </View>
@@ -61,7 +66,7 @@ const WelcomeScreen = ({ navigation }) => {
         </View>
 
         {/* Simple Footer */}
-        <Text style={styles.footerText}>Join thousands of students already studying together</Text>
+        <Text style={styles.footerText}>Made for CS 4730 Summer 2025 by Praggnya Kanungo, Zhirui Zhou, and Zia Yandoc</Text>
       </View>
     </SafeAreaView>
   );
@@ -82,20 +87,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 50,
   },
-  iconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#f0f8ff',
+  titleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 25,
   },
-  title: {
+  welcomeText: {
     fontSize: 36,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginBottom: 8,
+    fontWeight: '600',
+    color: '#333',
+  },
+  logo: {
+    width: 200,
+    height: 100,
+    marginLeft: 8,
+    marginTop: -10,
   },
   subtitle: {
     fontSize: 16,
@@ -130,12 +136,12 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   loginButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     marginBottom: 15,
-    shadowColor: '#007AFF',
+    shadowColor: '#FF6B35',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
@@ -152,10 +158,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#007AFF',
+    borderColor: '#FF6B35',
   },
   signupButtonText: {
-    color: '#007AFF',
+    color: '#FF6B35',
     fontSize: 18,
     fontWeight: 'bold',
   },

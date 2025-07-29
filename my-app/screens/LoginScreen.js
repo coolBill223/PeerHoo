@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -54,7 +55,6 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
-
   const handleForgotPassword = () => {
     if (!email) {
       Alert.alert('Reset Password', 'Please enter your email first.');
@@ -90,7 +90,14 @@ const LoginScreen = ({ navigation }) => {
       >
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.title}>StudyMate</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.loginText}>Log In to </Text>
+              <Image 
+                source={require('../assets/PeerHoo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
             <Text style={styles.subtitle}>Connect • Study • Succeed</Text>
           </View>
 
@@ -188,11 +195,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 50,
   },
-  title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginBottom: 10,
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  loginText: {
+    fontSize: 32,
+    fontWeight: '600',
+    color: '#333',
+  },
+  logo: {
+    width: 170,
+    height: 85,
+    marginLeft: 6,
+    marginTop: -13,
   },
   subtitle: {
     fontSize: 16,
@@ -228,12 +245,12 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   loginButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     borderRadius: 10,
     paddingVertical: 15,
     alignItems: 'center',
     marginTop: 10,
-    shadowColor: '#007AFF',
+    shadowColor: '#FF6B35',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
@@ -252,7 +269,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   forgotPasswordText: {
-    color: '#007AFF',
+    color: '#FF6B35',
     fontSize: 14,
   },
   footer: {
@@ -265,7 +282,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   signupLink: {
-    color: '#007AFF',
+    color: '#FF6B35',
     fontSize: 14,
     fontWeight: 'bold',
   },

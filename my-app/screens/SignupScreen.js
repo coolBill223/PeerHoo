@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { registerUser } from '../backend/authService';
@@ -103,17 +104,26 @@ const SignupScreen = ({ navigation }) => {
         style={styles.keyboardAvoidingView}
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-              disabled={loading}
-            >
-              <Ionicons name="arrow-back" size={24} color="#007AFF" />
-            </TouchableOpacity>
-            <Text style={styles.title}>Join StudyMate</Text>
-            <Text style={styles.subtitle}>Connect with study partners</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            disabled={loading}
+          >
+            <Ionicons name="arrow-back" size={24} color="#FF6B35" />
+          </TouchableOpacity>
+          
+          <View style={styles.centeredContent}>
+            <View style={styles.header}>
+              <View style={styles.titleRow}>
+                <Text style={styles.signupText}>Sign up for </Text>
+                <Image 
+                  source={require('../assets/PeerHoo.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </View>
+              <Text style={styles.subtitle}>Connect with study partners</Text>
+            </View>
 
           <View style={styles.form}>
             <View style={styles.inputContainer}>
@@ -228,6 +238,7 @@ const SignupScreen = ({ navigation }) => {
             >
               <Text style={styles.loginLink}>Login</Text>
             </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -248,23 +259,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     paddingTop: 20,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-    position: 'relative',
-  },
   backButton: {
     position: 'absolute',
     left: 0,
     top: 0,
     padding: 10,
+    zIndex: 1,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginBottom: 10,
-    marginTop: 20,
+  centeredContent: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingTop: 40,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    marginTop: 10,
+  },
+  signupText: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#333',
+  },
+  logo: {
+    width: 150,
+    height: 75,
+    marginLeft: 6,
+    marginTop: -12,
   },
   subtitle: {
     fontSize: 16,
@@ -272,7 +298,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   form: {
-    marginBottom: 30,
+    marginBottom: 20,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -300,12 +326,12 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   signupButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     borderRadius: 10,
     paddingVertical: 15,
     alignItems: 'center',
     marginTop: 20,
-    shadowColor: '#007AFF',
+    shadowColor: '#FF6B35',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
@@ -323,14 +349,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 10,
   },
   footerText: {
     color: '#666',
     fontSize: 14,
   },
   loginLink: {
-    color: '#007AFF',
+    color: '#FF6B35',
     fontSize: 14,
     fontWeight: 'bold',
   },
