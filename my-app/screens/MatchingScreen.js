@@ -866,7 +866,7 @@ const styles = StyleSheet.create({
     fontSize: 27, 
     fontWeight: 'bold', 
     color: '#1a1a1a',
-    textAlign: 'center',
+    textAlign: 'left',
     flex: 1,
   },
   headerTitle: { 

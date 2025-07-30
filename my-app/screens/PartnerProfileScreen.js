@@ -701,7 +701,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#FF3B30',
     fontWeight: '600',
-    marginLeft: 8,
+    marginLeft: 10,
     flex: 1,
   },
   unblockQuickButton: {

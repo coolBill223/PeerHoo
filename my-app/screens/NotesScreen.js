@@ -1367,7 +1367,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold', 
     color: '#333', 
     flex: 1, 
-    textAlign: 'center' 
+    textAlign: 'left' 
   },
   
   // Header buttons

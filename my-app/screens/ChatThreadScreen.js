@@ -134,36 +134,36 @@ const ChatThreadScreen = ({ route, navigation }) => {
   // rendering individual texts
   const renderMessage = ({ item }) => (
     <View
-      style={{
-        alignSelf: item.sender === 'user' ? 'flex-end' : 'flex-start',
-        backgroundColor: item.senderId === 'system' ? '#f0f0f0' :
-                        item.sender === 'user' ? '#007AFF' : '#e5e5ea',
-        borderRadius: 16,
-        marginVertical: 4,
-        marginHorizontal: 10,
-        padding: 10,
-        maxWidth: '75%',
-      }}
-    >
-      <Text style={{
-        color: item.senderId === 'system' ? '#666' :
-               item.sender === 'user' ? '#fff' : '#000',
-        fontSize: 16,
-        fontStyle: item.senderId === 'system' ? 'italic' : 'normal',
-      }}>
-        {item.text}
-      </Text>
-      {item.senderId !== 'system' && (
-        <Text style={{
-          fontSize: 10,
-          color: item.sender === 'user' ? '#eee' : '#666',
-          marginTop: 4,
-          textAlign: 'right',
-        }}>
-          {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </Text>
-      )}
-    </View>
+  style={{
+    alignSelf: item.sender === 'user' ? 'flex-end' : 'flex-start',
+    backgroundColor: item.senderId === 'system' ? '#f0f0f0' :
+                    item.sender === 'user' ? '#007AFF' : '#FF6B35', // changed from '#e5e5ea'
+    borderRadius: 16,
+    marginVertical: 4,
+    marginHorizontal: 10,
+    padding: 10,
+    maxWidth: '75%',
+  }}
+>
+  <Text style={{
+    color: item.senderId === 'system' ? '#666' :
+           item.sender === 'user' ? '#fff' : '#fff',
+    fontSize: 16,
+    fontStyle: item.senderId === 'system' ? 'italic' : 'normal',
+  }}>
+    {item.text}
+  </Text>
+  {item.senderId !== 'system' && (
+    <Text style={{
+      fontSize: 10,
+      color: item.sender === 'user' ? '#eee' : '#444', // optional: darker gray for timestamp
+      marginTop: 4,
+      textAlign: 'right',
+    }}>
+      {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+    </Text>
+  )}
+</View>
   );
 
   return (
