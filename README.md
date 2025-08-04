@@ -69,6 +69,14 @@ This entire project was completed over a 25-day development cycle. In the beginn
 
 However, due to the enthusiastic approach of all of the team members, we were able to implement features much faster than expected and were done with the working version of our app as early as the beginning of Week 3. We used the extra time to beta test our app as well as seek feedback from our Professor Daniel Graham. We used the final week for the creation of our demo video and final submission of the project. 
 
+## Repository Structure
+This follows a service-oriented architecture. Consider the my-app directory as the root here. Based on that:
+
+- All UI components are in /screens
+- All of the Business logic are in /backend services
+- Any configuration files are at root level
+- All static assets organized in /assets
+
 ## Demo Video
 
 Here is a demo video that walks through the app: 
