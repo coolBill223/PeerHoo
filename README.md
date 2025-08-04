@@ -57,10 +57,10 @@ Here's some detailing of each of the larger features:
 
 This entire project was completed over a 25-day development cycle. In the beginning of these 25 days, we defined our timeline to be the following:
 
-**Week 1**: Authentication and basic UI setup
-**Week 2**: Matching system and chat implementation  
-**Week 3**: Note sharing functionality
-**Week 4**: Testing, refinement, and deployment
+- **Week 1**: Authentication and basic UI setup
+- **Week 2**: Matching system and chat implementation  
+- **Week 3**: Note sharing functionality
+- **Week 4**: Testing, refinement, and deployment
 
 However, due to the enthusiastic approach of all of the team members, we were able to implement features much faster than expected and were done with the working version of our app as early as the beginning of Week 3. We used the extra time to beta test our app as well as seek feedback from our Professor Daniel Graham. We used the final week for the creation of our demo video and final submission of the project. 
 
