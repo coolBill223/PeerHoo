@@ -74,11 +74,25 @@ npm install
 npx expo install
 
 ## To Run the Program
+
+Before starting, make sure you have the following installed:
+
+- [Node.js](https://nodejs.org/) (v18 or later recommended)
+- [Expo CLI](https://docs.expo.dev/get-started/installation/)
+
+You can install Expo CLI globally via:
+
+```bash
+npm install -g expo-cli
+```
+Then run the program:
+```
 git clone https://github.com/your-org/your-repo.git
 cd your-repo
 npm install
 npx expo install
 npx expo start
+```
 
 ## Development Timeline
 
@@ -103,6 +117,9 @@ This follows a service-oriented architecture. Consider the my-app directory as t
 
 Here is a demo video that walks through the app: 
 
+## APK Link:
+
+Here is an APK link that could be download and useL: https://drive.google.com/drive/folders/1shc5NYDjWCnG9lewCyOiIe6tTHqY2fLA?usp=sharing
 ## License
 
 This project is licensed under the MIT License. Please view the LICENSE file for the full description.
