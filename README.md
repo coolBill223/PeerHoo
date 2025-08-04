@@ -52,6 +52,11 @@ Here's some detailing of each of the larger features:
 - **Firebase Realtime Database** 
 - **Firebase Storage** 
 
+### External Course API
+All course metadata is pulled live from the public **UVA SIS REST API** – see the official docs  
+<https://s23.cs3240.org/sis-api.html>.  
+We build dynamic query URLs (e.g. `...IScript_ClassSearch?...`) to fetch JSON about
+departments, courses and sections, then cache the results in Firestore for fast lookup in-app. :contentReference[oaicite:0]{index=0}
 
 ## Development Timeline
 
@@ -63,6 +68,14 @@ This entire project was completed over a 25-day development cycle. In the beginn
 - **Week 4**: Testing, refinement, and deployment
 
 However, due to the enthusiastic approach of all of the team members, we were able to implement features much faster than expected and were done with the working version of our app as early as the beginning of Week 3. We used the extra time to beta test our app as well as seek feedback from our Professor Daniel Graham. We used the final week for the creation of our demo video and final submission of the project. 
+
+## Repository Structure
+This follows a service-oriented architecture. Consider the my-app directory as the root here. Based on that:
+
+- All UI components are in /screens
+- All of the Business logic are in /backend services
+- Any configuration files are at root level
+- All static assets organized in /assets
 
 ## Demo Video
 
