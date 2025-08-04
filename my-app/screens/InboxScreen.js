@@ -1,3 +1,6 @@
+// The purpose of this file: This is the ui and functionality for the inbox page
+
+// Imports
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -26,7 +29,7 @@ const InboxScreen = () => {
   const [unreadCounts, setUnreadCounts] = useState({});
   const navigation = useNavigation();
 
-  // Helper function to format timestamp for thread list
+  // This is just a helper function to format timestamp for thread list
   const formatThreadTimestamp = (timestamp) => {
     if (!timestamp) return '';
     
@@ -35,11 +38,13 @@ const InboxScreen = () => {
     const diffInHours = (now - messageDate) / (1000 * 60 * 60);
     const diffInDays = diffInHours / 24;
     
-    // If today, show just time
+    // for the date and time ----
+
+    // If it is just today, then we show just time
     if (diffInHours < 24 && now.getDate() === messageDate.getDate()) {
       return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    // If yesterday
+    // if yesterday then this
     else if (diffInDays < 2 && now.getDate() - messageDate.getDate() === 1) {
       return 'Yesterday';
     }
@@ -47,13 +52,13 @@ const InboxScreen = () => {
     else if (diffInDays < 7) {
       return messageDate.toLocaleDateString([], { weekday: 'short' });
     }
-    // Otherwise show date
+    // Otherwise we will show date
     else {
       return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
   };
 
-  // Add focus effect to reload data when screen comes into focus
+  // Here we are adding focus effect to reload data when screen comes into focus or is clicked
   useFocusEffect(
     React.useCallback(() => {
       console.log('InboxScreen: Screen focused - reloading data...');
@@ -72,20 +77,20 @@ const InboxScreen = () => {
 
     loadData();
     
-    // Set up real-time listener for chats
+    // this is a real-time listener for chats
     const chatsQuery = query(
       collection(db, 'chats'), 
       where('participants', 'array-contains', auth.currentUser.uid)
     );
     
     const unsubscribe = onSnapshot(chatsQuery, () => {
-      // Reload data when chats change
+      // also the data has to reload when the chat changes 
       console.log('InboxScreen: Chat changes detected - reloading data...');
       loadData();
     },
     (err) => {
       if (err.code === 'permission-denied') return;
-      console.error('❌ chatslist snapshot error', err);
+      console.error('chatslist snapshot error', err);
     }
   );
 
@@ -106,13 +111,14 @@ const InboxScreen = () => {
 
   const loadData = async () => {
     try {
-      console.log('InboxScreen: Loading data...');
-      setLoading(true); // Set loading to true each time we reload
+      console.log('InboxScreen: Loading data');
+      setLoading(true); // set to true if we reloaded
       
-      // Load partners first and separate blocked from active
+      // first load partners
+      // sperate the blocked from active
       const allPartners = await getAcceptedPartners(auth.currentUser.uid);
       
-      // Check block status for each partner
+      // we have to check the blocked status for each
       const partnerStatusPromises = allPartners.map(async (partner) => {
         const isBlocked = await isPartnerBlocked(partner.id, auth.currentUser.uid);
         return {
@@ -123,53 +129,54 @@ const InboxScreen = () => {
       
       const partnersWithStatus = await Promise.all(partnerStatusPromises);
       
-      // Separate blocked and unblocked partners
+      // making separate blocked and unblocked partners
       const activePartners = partnersWithStatus.filter(p => !p.isBlocked);
       const blocked = partnersWithStatus.filter(p => p.isBlocked);
       
-      console.log('InboxScreen: Active partners loaded:', activePartners.length);
-      console.log('InboxScreen: Blocked partners:', blocked.length);
+      console.log('InboxScreen) Active partners loaded:', activePartners.length);
+      console.log('InboxScreen) Blocked partners:', blocked.length);
       
       setPartners(activePartners);
       setBlockedPartners(blocked);
       
-      // Load existing chats
+      // load existing chat
       const chatsQuery = query(
         collection(db, 'chats'), 
         where('participants', 'array-contains', auth.currentUser.uid)
       );
       
       const chatDocs = await getDocs(chatsQuery);
-      console.log('InboxScreen: Found chats:', chatDocs.docs.length);
+      console.log('InboxScreen) Found chats:', chatDocs.docs.length);
       
       if (chatDocs.empty) {
-        console.log('InboxScreen: No existing chats found');
+        console.log('InboxScreen) No existing chats found');
         setThreads([]);
         setUnreadCounts({});
         setLoading(false);
         return;
       }
 
-      // Process each chat and get unread counts (exclude blocked partners)
+      // process all the chats and get unread counts 
+      // however not of the blocked partners
       const threadPromises = chatDocs.docs.map(async (chatDoc) => {
         try {
           const chatData = chatDoc.data();
           const otherUid = chatData.participants.find((id) => id !== auth.currentUser.uid);
 
-          // Check if this partner is blocked
+          // So first check if this partner is blocked
           const partnership = partnersWithStatus.find(p => p.partnerId === otherUid);
           
-          // Skip blocked partners' chats
+          // If they are blocked, then dont include it 
           if (partnership?.isBlocked) {
-            console.log('InboxScreen: Skipping blocked partner chat:', otherUid);
+            console.log('InboxScreen) Skipping blocked partner chat:', otherUid);
             return null;
           }
 
-          // Get other user's name
+          // getting the name
           const userDoc = await getDoc(doc(db, 'users', otherUid));
           const userName = userDoc.exists() ? userDoc.data().name : 'Unknown User';
 
-          // Get last message
+          // Getting last message
           const messagesQuery = query(
             collection(db, 'chats', chatDoc.id, 'messages'),
             orderBy('sentAt', 'desc'),
@@ -178,7 +185,7 @@ const InboxScreen = () => {
           const messagesDocs = await getDocs(messagesQuery);
           const lastMessage = messagesDocs.empty ? null : messagesDocs.docs[0].data();
 
-          // Get unread count
+          // Getting unread count
           const unreadCount = await getUnreadCount(chatDoc.id, auth.currentUser.uid);
 
           return {
@@ -193,7 +200,7 @@ const InboxScreen = () => {
           };
           
         } catch (error) {
-          console.error('InboxScreen: Error processing chat:', chatDoc.id, error);
+          console.error('InboxScreen) Error processing chat:', chatDoc.id, error);
           return null;
         }
       });
@@ -201,7 +208,7 @@ const InboxScreen = () => {
       const threadsResults = await Promise.all(threadPromises);
       const validThreads = threadsResults.filter(thread => thread !== null);
       
-      // Sort threads by timestamp (most recent first)
+      // This is the attempt to sort threads by timestamp
       validThreads.sort((a, b) => {
         if (!a.rawTimestamp && !b.rawTimestamp) return 0;
         if (!a.rawTimestamp) return 1;
@@ -209,21 +216,21 @@ const InboxScreen = () => {
         return b.rawTimestamp - a.rawTimestamp;
       });
       
-      // Create unread counts object
+      // Then create unread counts object
       const newUnreadCounts = {};
       validThreads.forEach(thread => {
         newUnreadCounts[thread.id] = thread.unreadCount;
       });
       
-      console.log('InboxScreen: Threads processed:', validThreads.length);
-      console.log('InboxScreen: Unread counts:', newUnreadCounts);
+      console.log('InboxScreen) Threads processed:', validThreads.length);
+      console.log('InboxScreen) Unread counts:', newUnreadCounts);
       
       setThreads(validThreads);
       setUnreadCounts(newUnreadCounts);
       setLoading(false);
       
     } catch (error) {
-      console.error('InboxScreen: Error loading data:', error);
+      console.error('InboxScreen) Error loading data:', error);
       setLoading(false);
     }
   };
@@ -241,10 +248,10 @@ const InboxScreen = () => {
   
       setThreads(prev => prev.filter(thread => thread.id !== chatId));
       
-      // Reload data to refresh everything
+      // reload the data
       await loadData();
     } catch (error) {
-      console.error('InboxScreen: Error deleting chat:', error);
+      console.error('InboxScreen) Error deleting chat:', error);
       Alert.alert('Error', 'Failed to delete the chat.');
     }
   };
@@ -258,7 +265,7 @@ const InboxScreen = () => {
   
   const startChatWithPartner = async (partner) => {
     try {
-      console.log('InboxScreen: Starting chat with partner:', partner.partnerName);
+      console.log('InboxScreen) Starting chat with partner:', partner.partnerName);
       const chatId = await getOrCreateChat(auth.currentUser.uid, partner.partnerId);
       
       const thread = {
@@ -271,7 +278,7 @@ const InboxScreen = () => {
 
       navigation.navigate('ChatThread', { thread });
     } catch (error) {
-      console.error('InboxScreen: Error starting chat:', error);
+      console.error('InboxScreen) Error starting chat:', error);
       Alert.alert('Error', 'Failed to start chat. Please try again.');
     }
   };
@@ -348,7 +355,7 @@ const InboxScreen = () => {
     </TouchableOpacity>
   );
 
-  // Calculate total unread messages (already excludes blocked partners)
+  // Here I will calculate total unread messages 
   const totalUnreadCount = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
 
   if (!auth.currentUser?.uid) {
@@ -372,7 +379,7 @@ const InboxScreen = () => {
     );
   }
 
-  // Filter partners that don't already have active chats (only active partners)
+  // Here I filter partners that don't already have active chats 
   const partnersWithoutChats = partners.filter(partner => 
     !threads.some(thread => thread.otherUid === partner.partnerId)
   );
@@ -394,7 +401,7 @@ const InboxScreen = () => {
         </View>
       </View>
 
-      {/* Blocked Partners Notice - Only show if there are blocked partners */}
+      {/* Blocked Partners Notice - This only shows if there are blocked partners */}
       {blockedPartners.length > 0 && (
         <TouchableOpacity 
           style={styles.blockedNotice}
@@ -424,7 +431,7 @@ const InboxScreen = () => {
         </View>
       ) : (
         <>
-          {/* Existing Conversations */}
+          {/* All Existing Conversations */}
           {threads.length > 0 && (
             <View>
               <Text style={styles.sectionTitle}>Recent Conversations</Text>
@@ -438,7 +445,7 @@ const InboxScreen = () => {
             </View>
           )}
           
-          {/* Available Partners (only active ones) */}
+          {/* Available Partners (not blocked) */}
           {partnersWithoutChats.length > 0 && (
             <View>
               <Text style={styles.sectionTitle}>Start New Conversation</Text>
@@ -658,5 +665,5 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
-
+// end of styling here
 export default InboxScreen;

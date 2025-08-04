@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { signOut } from 'firebase/auth';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../firebaseConfig';
 import { getAcceptedPartners, isPartnerBlocked } from '../backend/partnerService';
 import { ensureUserDocument } from '../backend/userService';
@@ -48,51 +48,98 @@ const HomeScreen = ({ navigation }) => {
   const [currentTip, setCurrentTip] = useState('');
   const [recentMessages, setRecentMessages] = useState([]);
   const [partnersWithTimestamps, setPartnersWithTimestamps] = useState([]);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const intervalRef = useRef(null);
+  const authUnsubscribeRef = useRef(null);
+  const isMountedRef = useRef(true);
 
+  // Track component mount status
   useEffect(() => {
-    const initializeUser = async () => {
-      const current = auth.currentUser;
-      setUser(current);
-
-      if (current) {
-        // we are looking to see the user document exists
-        await ensureUserDocument();
-        
-        // loading the profile data
-        await loadUserProfile(current.uid);
-        
-        // fetching all data
-        try {
-          await loadPartnersData(current.uid);
-          
-          // these are the notes count that user has shared
-          await loadUserNotes(current.uid);
-          
-          // Loading the  user's course count
-          await loadUserCourseCount(current.uid);
-          
-        } catch (error) {
-          console.error('Error fetching data:', error);
-        }
-      }
-      const randomTip = tipBank[Math.floor(Math.random() * tipBank.length)];
-      setCurrentTip(randomTip);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
     };
-
-    initializeUser();
   }, []);
+
+  // Auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (!isMountedRef.current) return;
+      
+      if (currentUser && !isLoggingOut) {
+        setUser(currentUser);
+        initializeUserData(currentUser);
+      } else if (!currentUser) {
+        // User is signed out, clear all data
+        clearAllData();
+      }
+    });
+
+    authUnsubscribeRef.current = unsubscribe;
+    return () => {
+      if (authUnsubscribeRef.current) {
+        authUnsubscribeRef.current();
+      }
+    };
+  }, [isLoggingOut]);
+
+  // Clear all data when user logs out
+  const clearAllData = () => {
+    if (!isMountedRef.current) return;
+    
+    setUser(null);
+    setUserProfile(null);
+    setPartners([]);
+    setBlockedPartners([]);
+    setTotalUnreadMessages(0);
+    setUserNotes([]);
+    setUserCourseCount(0);
+    setRecentMessages([]);
+    setPartnersWithTimestamps([]);
+    
+    // Clear any intervals
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  // Initialize user data
+  const initializeUserData = async (currentUser) => {
+    if (!currentUser || !isMountedRef.current || isLoggingOut) return;
+
+    try {
+      // Ensure user document exists
+      await ensureUserDocument();
+      
+      // Load profile data
+      await loadUserProfile(currentUser.uid);
+      
+      // Fetch all data
+      await loadPartnersData(currentUser.uid);
+      await loadUserNotes(currentUser.uid);
+      await loadUserCourseCount(currentUser.uid);
+      
+      // Set random tip
+      const randomTip = tipBank[Math.floor(Math.random() * tipBank.length)];
+      if (isMountedRef.current) {
+        setCurrentTip(randomTip);
+      }
+    } catch (error) {
+      console.error('Error initializing user data:', error);
+    }
+  };
 
   // Set up interval to refresh messages periodically
   useEffect(() => {
-    if (auth.currentUser?.uid) {
+    if (user?.uid && !isLoggingOut) {
       // Load messages immediately
-      loadRecentMessages(auth.currentUser.uid);
+      loadRecentMessages(user.uid);
       
       // Set up interval to reload messages every 10 seconds
       intervalRef.current = setInterval(() => {
-        if (auth.currentUser?.uid) {
-          loadRecentMessages(auth.currentUser.uid);
+        if (user?.uid && !isLoggingOut && isMountedRef.current) {
+          loadRecentMessages(user.uid);
         }
       }, 10000); // 10 seconds
     }
@@ -100,12 +147,15 @@ const HomeScreen = ({ navigation }) => {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [partners.length]); // Restart interval when partners change
+  }, [user?.uid, partners.length, isLoggingOut]);
 
   // Load recent messages for activity timeline
   const loadRecentMessages = async (uid) => {
+    if (!uid || isLoggingOut || !isMountedRef.current) return;
+
     try {
       // Get all chats where user is a participant
       const chatsQuery = query(
@@ -115,11 +165,15 @@ const HomeScreen = ({ navigation }) => {
       
       const chatDocs = await getDocs(chatsQuery);
       
+      if (!isMountedRef.current || isLoggingOut) return;
+      
       const messages = [];
       const blockedPartnerIds = new Set(blockedPartners.map(p => p.partnerId || p.id));
 
       // Get recent messages from each chat
       for (const chatDoc of chatDocs.docs) {
+        if (!isMountedRef.current || isLoggingOut) return;
+        
         const chatData = chatDoc.data();
         const otherUserId = chatData.participants.find(id => id !== uid);
         
@@ -139,7 +193,7 @@ const HomeScreen = ({ navigation }) => {
         if (partner) {
           partnerName = partner.partnerName || partner.name || 'Study Partner';
         } else {
-          // Fallback: try to get user info
+          // This is just a fall back that we inserted later in the process
           try {
             const userInfo = await getUserInfo(otherUserId);
             partnerName = userInfo?.name || `Partner ${otherUserId.slice(0, 6)}`;
@@ -151,11 +205,12 @@ const HomeScreen = ({ navigation }) => {
         // Get recent messages from this chat (last 5 messages to ensure we catch recent ones)
         const messagesQuery = query(
           collection(db, 'chats', chatDoc.id, 'messages'),
-          orderBy('sentAt', 'desc'), // Fixed: use 'sentAt' instead of 'timestamp'
-          limit(5)
+          orderBy('sentAt', 'desc'), 
         );
         
         const messageDocs = await getDocs(messagesQuery);
+        
+        if (!isMountedRef.current || isLoggingOut) return;
         
         // Add each recent message, but only messages from others
         messageDocs.docs.forEach(messageDoc => {
@@ -167,7 +222,7 @@ const HomeScreen = ({ navigation }) => {
             messages.push({
               type: 'message',
               title: `Message from ${partnerName}`,
-              timestamp: messageData.sentAt, // Use sentAt as timestamp
+              timestamp: messageData.sentAt, 
               chatId: chatDoc.id,
               partnerName,
               senderId: messageData.senderId,
@@ -178,7 +233,9 @@ const HomeScreen = ({ navigation }) => {
         });
       }
 
-      // Sort messages by timestamp (most recent first)
+      if (!isMountedRef.current || isLoggingOut) return;
+
+      // Sort messages by timestamp and we will do most recent first
       messages.sort((a, b) => {
         if (!a.timestamp || !b.timestamp) return 0;
         return b.timestamp.toDate() - a.timestamp.toDate();
@@ -187,20 +244,30 @@ const HomeScreen = ({ navigation }) => {
       // Keep only the 3 most recent messages from others
       const recentMessagesFromOthers = messages.slice(0, 3);
       
-      setRecentMessages(recentMessagesFromOthers);
+      if (isMountedRef.current && !isLoggingOut) {
+        setRecentMessages(recentMessagesFromOthers);
+      }
     } catch (error) {
       console.error('Error loading recent messages:', error);
-      setRecentMessages([]);
+      if (isMountedRef.current && !isLoggingOut) {
+        setRecentMessages([]);
+      }
     }
   };
 
-  // Load partners and filter out blocked ones
+  // here we are loading partners and then filter out blocked ones
   const loadPartnersData = async (uid) => {
+    if (!uid || isLoggingOut || !isMountedRef.current) return;
+
     try {
       const allPartners = await getAcceptedPartners(uid);
       
+      if (!isMountedRef.current || isLoggingOut) return;
+      
       // Check blocked status for each partner AND get current user info
       const partnerStatusPromises = allPartners.map(async (partner) => {
+        if (!isMountedRef.current || isLoggingOut) return null;
+        
         const isBlocked = await isPartnerBlocked(partner.id, uid);
         
         // Fetch current user information to get updated name
@@ -208,29 +275,30 @@ const HomeScreen = ({ navigation }) => {
         try {
           currentUserInfo = await getUserInfo(partner.partnerId || partner.id);
         } catch (error) {
-          // Silently continue if user info unavailable
+          // dont do anythign hereif there is a error
         }
         
         return {
           ...partner,
           isBlocked,
-          // Use current name from user document, fallback to partner data
           partnerName: currentUserInfo?.name || partner.partnerName || partner.name || 'Study Partner',
-          // Also update other info that might have changed
           partnerComputingId: currentUserInfo?.computingId || partner.partnerComputingId || partner.computingId,
           currentUserInfo
         };
       });
       
       const partnersWithStatus = await Promise.all(partnerStatusPromises);
+      const validPartners = partnersWithStatus.filter(p => p !== null);
       
-      const activePartners = partnersWithStatus.filter(p => !p.isBlocked);
-      const blocked = partnersWithStatus.filter(p => p.isBlocked);
+      if (!isMountedRef.current || isLoggingOut) return;
+      
+      const activePartners = validPartners.filter(p => !p.isBlocked);
+      const blocked = validPartners.filter(p => p.isBlocked);
       
       setPartners(activePartners);
       setBlockedPartners(blocked);
 
-      // Get partnership creation timestamps
+      // Getting timestamps
       await loadPartnershipTimestamps(uid, activePartners);
       
       // Now I will load unread messages
@@ -241,19 +309,25 @@ const HomeScreen = ({ navigation }) => {
       
     } catch (error) {
       console.error('Error loading partners data:', error);
-      setPartners([]);
-      setBlockedPartners([]);
-      setTotalUnreadMessages(0);
+      if (isMountedRef.current && !isLoggingOut) {
+        setPartners([]);
+        setBlockedPartners([]);
+        setTotalUnreadMessages(0);
+      }
     }
   };
 
-  // Load partnership timestamps from match requests
+  // here we are loading partnership timestamps from match requests
   const loadPartnershipTimestamps = async (uid, activePartners) => {
+    if (!uid || isLoggingOut || !isMountedRef.current) return;
+
     try {
       const matchRequests = await getMyMatchRequests(uid);
       
+      if (!isMountedRef.current || isLoggingOut) return;
+      
       const partnersWithTime = activePartners.map(partner => {
-        // Find the match request for this partnership
+        // here we are looking for the right match request
         const matchRequest = matchRequests.find(req => 
           (req.senderId === uid && req.receiverId === partner.partnerId) ||
           (req.receiverId === uid && req.senderId === partner.partnerId)
@@ -265,41 +339,59 @@ const HomeScreen = ({ navigation }) => {
         };
       });
 
-      setPartnersWithTimestamps(partnersWithTime);
+      if (isMountedRef.current && !isLoggingOut) {
+        setPartnersWithTimestamps(partnersWithTime);
+      }
     } catch (error) {
       console.error('Error loading partnership timestamps:', error);
-      setPartnersWithTimestamps(activePartners);
+      if (isMountedRef.current && !isLoggingOut) {
+        setPartnersWithTimestamps(activePartners);
+      }
     }
   };
 
-  // Loading the user course counts
+  // This is for loading the user course counts
   const loadUserCourseCount = async (uid) => {
+    if (!uid || isLoggingOut || !isMountedRef.current) return;
+
     try {
       const matchRequests = await getMyMatchRequests(uid);
+      
+      if (!isMountedRef.current || isLoggingOut) return;
+      
       const userCourses = matchRequests
         .filter((m) => m.senderId === uid)
         .map((m) => m.course);
       
       const uniqueCourses = [...new Set(userCourses)];
-      setUserCourseCount(uniqueCourses.length);
+      
+      if (isMountedRef.current && !isLoggingOut) {
+        setUserCourseCount(uniqueCourses.length);
+      }
     } catch (error) {
       console.error('Error loading user course count:', error);
-      setUserCourseCount(0);
+      if (isMountedRef.current && !isLoggingOut) {
+        setUserCourseCount(0);
+      }
     }
   };
 
-  // Loading user profile data
+  // This is for loading user profile data
   const loadUserProfile = async (uid) => {
+    if (!uid || isLoggingOut || !isMountedRef.current) return;
+
     try {
       const userDocRef = doc(db, 'users', uid);
       const userDoc = await getDoc(userDocRef);
+      
+      if (!isMountedRef.current || isLoggingOut) return;
       
       if (userDoc.exists()) {
         const userData = userDoc.data();
         setUserProfile(userData);
       } else {
         const current = auth.currentUser;
-        if (current) {
+        if (current && !isLoggingOut) {
           setUserProfile({
             name: current.displayName || 'User',
             email: current.email || 'unknown@email.com'
@@ -312,11 +404,17 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const loadUserNotes = async (uid) => {
+    if (!uid || isLoggingOut || !isMountedRef.current) return;
+
     try {
       const notes = await getNotesByUser(uid);
       
+      if (!isMountedRef.current || isLoggingOut) return;
+      
       const notesWithAuthors = await Promise.all(
         notes.map(async (note) => {
+          if (!isMountedRef.current || isLoggingOut) return null;
+          
           try {
             const authorInfo = await getUserInfo(note.authorId);
             return {
@@ -334,15 +432,23 @@ const HomeScreen = ({ navigation }) => {
         })
       );
       
-      setUserNotes(notesWithAuthors);
+      const validNotes = notesWithAuthors.filter(note => note !== null);
+      
+      if (isMountedRef.current && !isLoggingOut) {
+        setUserNotes(validNotes);
+      }
     } catch (error) {
       console.error('Error loading user notes:', error);
-      setUserNotes([]);
+      if (isMountedRef.current && !isLoggingOut) {
+        setUserNotes([]);
+      }
     }
   };
 
   // this is for loading total unread message count but not from blocked partners
   const loadUnreadMessageCount = async (userId, activePartners = partners, blockedPartners = []) => {
+    if (!userId || isLoggingOut || !isMountedRef.current) return;
+
     try {
       // getting all chats
       const chatsQuery = query(
@@ -352,8 +458,12 @@ const HomeScreen = ({ navigation }) => {
       
       const chatDocs = await getDocs(chatsQuery);
       
+      if (!isMountedRef.current || isLoggingOut) return;
+      
       if (chatDocs.empty) {
-        setTotalUnreadMessages(0);
+        if (isMountedRef.current && !isLoggingOut) {
+          setTotalUnreadMessages(0);
+        }
         return;
       }
       // these are ids for faster look ups
@@ -361,6 +471,8 @@ const HomeScreen = ({ navigation }) => {
 
       // Geting unread count for each chat
       const unreadPromises = chatDocs.docs.map(async (chatDoc) => {
+        if (!isMountedRef.current || isLoggingOut) return 0;
+        
         const chatData = chatDoc.data();
         const otherUserId = chatData.participants.find(id => id !== userId);
         
@@ -372,19 +484,24 @@ const HomeScreen = ({ navigation }) => {
       });
       
       const unreadCounts = await Promise.all(unreadPromises);
+      
+      if (!isMountedRef.current || isLoggingOut) return;
+      
       const totalUnread = unreadCounts.reduce((sum, count) => sum + count, 0);
       
       setTotalUnreadMessages(totalUnread);
     } catch (error) {
       console.error('Error loading unread message count:', error);
-      setTotalUnreadMessages(0);
+      if (isMountedRef.current && !isLoggingOut) {
+        setTotalUnreadMessages(0);
+      }
     }
   };
 
   // this is to reload partners after updating
   const reloadPartners = async () => {
     const current = auth.currentUser;
-    if (current) {
+    if (current && !isLoggingOut && isMountedRef.current) {
       try {
         await loadPartnersData(current.uid);
         
@@ -397,10 +514,10 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // Reloading user profile, unread count, and notes when screen comes into focus
+  // Reloading user profile, unread count, and notes when screen comes 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      if (auth.currentUser?.uid) {
+      if (auth.currentUser?.uid && !isLoggingOut && isMountedRef.current) {
         loadUserProfile(auth.currentUser.uid);
         loadPartnersData(auth.currentUser.uid);
         loadUserNotes(auth.currentUser.uid);
@@ -409,7 +526,7 @@ const HomeScreen = ({ navigation }) => {
     });
 
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, isLoggingOut]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -422,9 +539,23 @@ const HomeScreen = ({ navigation }) => {
           style: 'destructive',
           onPress: async () => {
             try {
+              setIsLoggingOut(true);
+              
+              // Clearing interval immediately
+              if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+              }
+              
+              // Also we have clear all data before signing out
+              clearAllData();
+              
+              // Sign out
               await signOut(auth);
+              
             } catch (error) {
               console.error('Logout error:', error);
+              setIsLoggingOut(false);
               Alert.alert('Error', 'Failed to logout. Please try again.');
             }
           }
@@ -460,7 +591,6 @@ const HomeScreen = ({ navigation }) => {
       });
     });
     
-    // Add recent partnerships with real timestamps
     const recentPartners = partnersWithTimestamps
       .filter(partner => partner.matchTimestamp) // Only partners with timestamps
       .sort((a, b) => b.matchTimestamp.toDate() - a.matchTimestamp.toDate()) // Sort by newest first
@@ -476,7 +606,6 @@ const HomeScreen = ({ navigation }) => {
       });
     });
     
-    // Add recent messages with real timestamps
     recentMessages.forEach(message => {
       if (message.timestamp) {
         const timeAgo = getTimeAgo(message.timestamp.toDate());
@@ -489,7 +618,7 @@ const HomeScreen = ({ navigation }) => {
       }
     });
     
-    // Sort all activities by timestamp (newest first) and take top 3
+    // We will sort all activities by timestamp (newest first) and take top 3
     const sortedActivities = activities
       .filter(activity => activity.timestamp) // Only activities with timestamps
       .sort((a, b) => b.timestamp - a.timestamp)
@@ -498,7 +627,7 @@ const HomeScreen = ({ navigation }) => {
     return sortedActivities;
   };
 
-  // this gets the time ago
+  // get time 
   const getTimeAgo = (date) => {
     const now = new Date();
     const diffInMinutes = Math.floor((now - date) / (1000 * 60));
@@ -573,6 +702,17 @@ const HomeScreen = ({ navigation }) => {
   ];
 
   const recentActivity = getRecentActivity();
+
+  // Don't render if logging out
+  if (isLoggingOut) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Logging out...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -734,6 +874,15 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
   },
   header: {
     flexDirection: 'row',
@@ -969,5 +1118,5 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
-
+// end of styles
 export default HomeScreen;

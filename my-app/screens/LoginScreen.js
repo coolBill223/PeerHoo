@@ -1,3 +1,6 @@
+// The purpose of this file: This is the ui and functionality for the log in page
+
+// Imports
 import React, { useState } from 'react';
 import {
   View,
@@ -29,7 +32,7 @@ const LoginScreen = ({ navigation }) => {
       return;
     }
 
-    // Basic email validation
+    // This is the basica generic logic for email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Invalid Email', 'Please enter a valid email address.');
@@ -39,12 +42,8 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // Navigation will happen automatically due to auth state change in App.js
     } catch (error) {
-      // Suppress console errors to prevent them from showing in development
-      // console.error('Login error:', error);
-      
-      // User-friendly error messages
+      // Here are user-friendly error messages
       let title = 'Login Failed';
       let message = '';
       
@@ -93,7 +92,7 @@ const LoginScreen = ({ navigation }) => {
           break;
       }
       
-      // Ensure the error is fully handled and doesn't propagate
+      // error ahndling here 
       setTimeout(() => {
         Alert.alert(title, message);
       }, 100);
@@ -112,7 +111,7 @@ const LoginScreen = ({ navigation }) => {
       return;
     }
 
-    // Basic email validation
+    // email validation again
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Invalid Email', 'Please enter a valid email address to receive the password reset link.');
@@ -135,8 +134,6 @@ const LoginScreen = ({ navigation }) => {
                 'We\'ve sent a password reset link to your email. Please check your inbox (and spam folder) for instructions on how to reset your password.'
               );
             } catch (error) {
-              // Suppress console errors in production
-              // console.error('Forgot password error:', error);
               
               let message = 'Unable to send the password reset email. Please try again.';
               if (error.code === 'auth/user-not-found') {
@@ -364,5 +361,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
-
+// end of styling
 export default LoginScreen;
