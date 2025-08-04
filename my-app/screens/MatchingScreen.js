@@ -597,18 +597,9 @@ const MatchingScreen = ({ navigation }) => {
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Active Partners - {selectedCourse}</Text>
-              {blockedPartners.length > 0 && (
-                <TouchableOpacity 
-                  style={styles.blockedButton}
-                  onPress={handleViewBlockedPartners}
-                >
-                  <Ionicons name="ban" size={16} color="#FF3B30" />
-                  <Text style={styles.blockedButtonText}>{blockedPartners.length}</Text>
-                </TouchableOpacity>
-              )}
             </View>
 
-            {/* Blocked Partners Notice */}
+            {/* Blocked Partners Notice - Only show if there are blocked partners */}
             {blockedPartners.length > 0 && (
               <TouchableOpacity 
                 style={styles.blockedNotice}
@@ -923,20 +914,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
-  },
-  blockedButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffebee',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  blockedButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FF3B30',
   },
   blockedNotice: {
     flexDirection: 'row',

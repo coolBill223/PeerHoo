@@ -33,6 +33,30 @@ const ChatThreadScreen = ({ route, navigation }) => {
   const [message, setMessage] = useState('');
   const flatListRef = useRef(null);
 
+  // Helper function to format timestamp
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const now = new Date();
+    const messageDate = new Date(timestamp);
+    const diffInHours = (now - messageDate) / (1000 * 60 * 60);
+    
+    // If less than 24 hours ago, show just time
+    if (diffInHours < 24) {
+      return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    // If less than 7 days ago, show day and time
+    else if (diffInHours < 168) { // 24 * 7 = 168 hours
+      return messageDate.toLocaleDateString([], { weekday: 'short' }) + ' ' + 
+             messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    // Otherwise show date and time
+    else {
+      return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+             messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+  };
+
   // Set up custom header based on navigation source - using useEffect instead of useLayoutEffect
   useEffect(() => {
     // Check if we came from partner profile
@@ -156,11 +180,11 @@ const ChatThreadScreen = ({ route, navigation }) => {
   {item.senderId !== 'system' && (
     <Text style={{
       fontSize: 10,
-      color: item.sender === 'user' ? '#eee' : '#444', // optional: darker gray for timestamp
+      color: item.sender === 'user' ? '#eee' : '#ddd',
       marginTop: 4,
       textAlign: 'right',
     }}>
-      {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      {formatTimestamp(item.timestamp)}
     </Text>
   )}
 </View>

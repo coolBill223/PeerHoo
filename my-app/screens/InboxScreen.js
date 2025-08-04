@@ -26,6 +26,33 @@ const InboxScreen = () => {
   const [unreadCounts, setUnreadCounts] = useState({});
   const navigation = useNavigation();
 
+  // Helper function to format timestamp for thread list
+  const formatThreadTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const now = new Date();
+    const messageDate = new Date(timestamp);
+    const diffInHours = (now - messageDate) / (1000 * 60 * 60);
+    const diffInDays = diffInHours / 24;
+    
+    // If today, show just time
+    if (diffInHours < 24 && now.getDate() === messageDate.getDate()) {
+      return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    // If yesterday
+    else if (diffInDays < 2 && now.getDate() - messageDate.getDate() === 1) {
+      return 'Yesterday';
+    }
+    // If this week, show day name
+    else if (diffInDays < 7) {
+      return messageDate.toLocaleDateString([], { weekday: 'short' });
+    }
+    // Otherwise show date
+    else {
+      return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+  };
+
   // Add focus effect to reload data when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
@@ -153,7 +180,8 @@ const InboxScreen = () => {
             id: chatDoc.id,
             name: userName,
             lastMessage: lastMessage?.text || 'No messages yet',
-            timestamp: lastMessage?.sentAt?.toDate()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '',
+            timestamp: formatThreadTimestamp(lastMessage?.sentAt?.toDate()),
+            rawTimestamp: lastMessage?.sentAt?.toDate(),
             otherUid: otherUid,
             unreadCount: unreadCount,
             course: chatData.course || '',
@@ -167,6 +195,14 @@ const InboxScreen = () => {
 
       const threadsResults = await Promise.all(threadPromises);
       const validThreads = threadsResults.filter(thread => thread !== null);
+      
+      // Sort threads by timestamp (most recent first)
+      validThreads.sort((a, b) => {
+        if (!a.rawTimestamp && !b.rawTimestamp) return 0;
+        if (!a.rawTimestamp) return 1;
+        if (!b.rawTimestamp) return -1;
+        return b.rawTimestamp - a.rawTimestamp;
+      });
       
       // Create unread counts object
       const newUnreadCounts = {};
@@ -224,7 +260,7 @@ const InboxScreen = () => {
         id: chatId,
         name: partner.partnerName,
         lastMessage: 'Start your conversation!',
-        timestamp: new Date().toLocaleTimeString(),
+        timestamp: 'Now',
         unreadCount: 0,
       };
 
@@ -343,15 +379,6 @@ const InboxScreen = () => {
       <View style={styles.headerContainer}>
         <Text style={styles.title}>Messages</Text>
         <View style={styles.headerActions}>
-          {blockedPartners.length > 0 && (
-            <TouchableOpacity 
-              style={styles.blockedButton} 
-              onPress={handleViewBlockedPartners}
-            >
-              <Ionicons name="ban" size={18} color="#FF3B30" />
-              <Text style={styles.blockedCount}>{blockedPartners.length}</Text>
-            </TouchableOpacity>
-          )}
           {totalUnreadCount > 0 && (
             <View style={styles.totalUnreadBadge}>
               <Text style={styles.totalUnreadText}>
@@ -362,7 +389,7 @@ const InboxScreen = () => {
         </View>
       </View>
 
-      {/* Blocked Partners Notice */}
+      {/* Blocked Partners Notice - Only show if there are blocked partners */}
       {blockedPartners.length > 0 && (
         <TouchableOpacity 
           style={styles.blockedNotice}
@@ -450,20 +477,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  blockedButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffebee',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 4,
-  },
-  blockedCount: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FF3B30',
   },
   totalUnreadBadge: {
     backgroundColor: '#FF3B30',
