@@ -58,6 +58,28 @@ All course metadata is pulled live from the public **UVA SIS REST API** – see 
 We build dynamic query URLs (e.g. `...IScript_ClassSearch?...`) to fetch JSON about
 departments, courses and sections, then cache the results in Firestore for fast lookup in-app. :contentReference[oaicite:0]{index=0}
 
+## Dependencies
+
+This project uses:
+
+- React Native via [Expo](https://expo.dev)
+- Firebase (Authentication, Firestore, Realtime Database, Storage)
+- React Navigation
+- Expo document/image picker
+- React Native Gesture Handler & Reanimated
+- Other packages listed in `package.json`
+
+To install:
+npm install
+npx expo install
+
+## To Run the Program
+git clone https://github.com/your-org/your-repo.git
+cd your-repo
+npm install
+npx expo install
+npx expo start
+
 ## Development Timeline
 
 This entire project was completed over a 25-day development cycle. In the beginning of these 25 days, we defined our timeline to be the following:
