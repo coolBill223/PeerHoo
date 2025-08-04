@@ -88,7 +88,7 @@ npm install -g expo-cli
 Then run the program:
 ```
 git clone https://github.com/coolBill223/PeerHoo.git
-cd my-app
+cd PeerHoo/my-app
 npm install
 npx expo install
 npx expo start
