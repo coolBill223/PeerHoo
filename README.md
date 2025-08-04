@@ -115,7 +115,7 @@ This follows a service-oriented architecture. Consider the my-app directory as t
 
 ## Demo Video
 
-Here is a demo video that walks through the app: 
+Here is a demo video that walks through the app: https://www.youtube.com/watch?v=uJhApcNrgOI
 
 ## APK Link:
 
