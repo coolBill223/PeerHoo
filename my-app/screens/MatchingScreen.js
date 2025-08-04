@@ -1,3 +1,5 @@
+// The purpose of this file: This is the UI where users can browse courses, view study partners, send/accept/reject match requests, and report or block others.
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -25,6 +27,7 @@ import { auth } from '../firebaseConfig';
 const MatchingScreen = ({ navigation }) => {
   const [uid, setUid] = useState(null);
 
+  //loads users' ID
   useEffect(() => {
     const user = auth.currentUser;
     if (user) {
@@ -73,7 +76,7 @@ const MatchingScreen = ({ navigation }) => {
     'Other'
   ];
 
-  //helper functions
+  //loads the incoming match requests for the user
   const loadIncoming = async () => {
     try {
       setLoadingIncoming(true);
@@ -86,6 +89,8 @@ const MatchingScreen = ({ navigation }) => {
     }
   };
 
+  //fetches the list of courses associated with the given user ID (UID)
+  //and updates the `myCourses` state with the retrieved data.
   const loadMyCourses = async (uid) => {
     try {
       const all = await getMyMatchRequests(uid);
@@ -98,6 +103,7 @@ const MatchingScreen = ({ navigation }) => {
     }
   };
 
+  //loads all partners who have matched with the user
   const loadCurrentPartners = async (course) => {
     if (!course || !uid) return;
     try {
@@ -128,6 +134,7 @@ const MatchingScreen = ({ navigation }) => {
     }
   };
 
+  //handles the application to a match request
   const handleApply = async (reqId) => {
     try {
       await applyToMatchRequest(reqId, uid);
@@ -140,276 +147,299 @@ const MatchingScreen = ({ navigation }) => {
     }
   };
 
-  const handleReportUser = async () => {
-    if (!reportReason.trim()) {
-      Alert.alert('Error', 'Please select or enter a reason for reporting.');
-      return;
-    }
+// Handles user reporting logic
+const handleReportUser = async () => {
+  if (!reportReason.trim()) {
+    // If no reason provided, alert user and exit
+    Alert.alert('Error', 'Please select or enter a reason for reporting.');
+    return;
+  }
 
-    setReportingInProgress(true);
-    try {
-      if (reportTarget && reportTarget.partnershipId) {
-        await reportPartner(reportTarget.partnershipId, uid, reportReason);
-        setShowReportModal(false);
-        setReportReason('');
-        setReportTarget(null);
-        
-        Alert.alert(
-          'Report Submitted',
-          'Thank you for your report. Our team will review it and take appropriate action if necessary.'
-        );
-      }
-    } catch (error) {
-      console.error('Error reporting user:', error);
-      Alert.alert('Error', 'Failed to submit report. Please try again.');
-    } finally {
-      setReportingInProgress(false);
-    }
-  };
+  setReportingInProgress(true); // Show loading spinner
+  try {
+    // Ensure target has a valid partnership ID before reporting
+    if (reportTarget && reportTarget.partnershipId) {
+      await reportPartner(reportTarget.partnershipId, uid, reportReason); // Submit report
+      setShowReportModal(false); // Close modal
+      setReportReason('');       // Reset reason
+      setReportTarget(null);     // Clear target
 
-  const handleBlockUser = async (partner) => {
-    Alert.alert(
-      'Block User',
-      `Are you sure you want to block ${partner.partnerName || 'this user'}? This will prevent them from contacting you.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              if (partner.id) {
-                await blockPartner(partner.id, uid);
-                Alert.alert('User Blocked', 'You have successfully blocked this user.');
-                loadCurrentPartners(selectedCourse);
-              }
-            } catch (error) {
-              console.error('Error blocking user:', error);
-              Alert.alert('Error', 'Failed to block user. Please try again.');
+      Alert.alert(
+        'Report Submitted',
+        'Thank you for your report. Our team will review it and take appropriate action if necessary.'
+      );
+    }
+  } catch (error) {
+    console.error('Error reporting user:', error);
+    Alert.alert('Error', 'Failed to submit report. Please try again.');
+  } finally {
+    setReportingInProgress(false); // Stop spinner regardless of outcome
+  }
+};
+
+// Handles logic to block a partner
+const handleBlockUser = async (partner) => {
+  Alert.alert(
+    'Block User',
+    `Are you sure you want to block ${partner.partnerName || 'this user'}? This will prevent them from contacting you.`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            if (partner.id) {
+              await blockPartner(partner.id, uid); // Call service to block partner
+              Alert.alert('User Blocked', 'You have successfully blocked this user.');
+              loadCurrentPartners(selectedCourse); // Refresh partner list
             }
+          } catch (error) {
+            console.error('Error blocking user:', error);
+            Alert.alert('Error', 'Failed to block user. Please try again.');
           }
         }
-      ]
-    );
-  };
-
-  const handlePartnerLongPress = (partner) => {
-    Alert.alert(
-      'Partner Actions',
-      `What would you like to do with ${partner.partnerName || 'this partner'}?`,
-      [
-        {
-          text: 'Report User',
-          onPress: () => {
-            setReportTarget({
-              partnershipId: partner.id,
-              partnerName: partner.partnerName
-            });
-            setShowReportModal(true);
-          },
-          style: 'destructive'
-        },
-        {
-          text: 'Block User',
-          onPress: () => handleBlockUser(partner),
-          style: 'destructive'
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        }
-      ]
-    );
-  };
-
-  const handleViewBlockedPartners = () => {
-    const allBlockedPartners = [...blockedPartners];
-    navigation.navigate('BlockedPartners', { 
-      blockedPartners: allBlockedPartners, 
-      onPartnersUpdated: () => loadCurrentPartners(selectedCourse)
-    });
-  };
-
-  useEffect(() => {
-    const loadOpen = async () => {
-      if (!selectedCourse || !uid) return;
-      try {
-        setLoadingOpen(true);
-        const data = await getOpenMatchRequests(selectedCourse, uid);
-        setOpen(data);
-      } finally {
-        setLoadingOpen(false);
       }
-    };
-    loadOpen();
-    loadCurrentPartners(selectedCourse);
-  }, [selectedCourse, uid]); 
+    ]
+  );
+};
 
-  useEffect(() => {
-    if (uid) {
-      loadIncoming();
-    }
-  }, [uid]);
+// Long-press handler for partner list item – allows report/block options
+const handlePartnerLongPress = (partner) => {
+  Alert.alert(
+    'Partner Actions',
+    `What would you like to do with ${partner.partnerName || 'this partner'}?`,
+    [
+      {
+        text: 'Report User',
+        onPress: () => {
+          setReportTarget({
+            partnershipId: partner.id,
+            partnerName: partner.partnerName
+          });
+          setShowReportModal(true);
+        },
+        style: 'destructive'
+      },
+      {
+        text: 'Block User',
+        onPress: () => handleBlockUser(partner),
+        style: 'destructive'
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel'
+      }
+    ]
+  );
+};
 
-  //course submit
-  const handleSubmit = async () => {
-    if (!form.courseCode) {
-      Alert.alert('Missing Course', 'Please select a course');
-      return;
-    }
+// Navigate to the blocked partners screen
+const handleViewBlockedPartners = () => {
+  const allBlockedPartners = [...blockedPartners]; // Create a shallow copy for safety
+  navigation.navigate('BlockedPartners', { 
+    blockedPartners: allBlockedPartners, 
+    onPartnersUpdated: () => loadCurrentPartners(selectedCourse) // Refresh list if updated
+  });
+};
+
+// Load open match requests when course or UID changes
+useEffect(() => {
+  const loadOpen = async () => {
+    if (!selectedCourse || !uid) return;
     try {
-      await sendMatchRequest({
-        senderId: uid,
-        course: form.courseCode,
-        studyTime: form.studyTime,
-        meetingPreference: form.meeting,
-        bio: form.goals.slice(0, 100),
-      });
-      Alert.alert('Success', 'Match request submitted.');
-      await loadMyCourses(uid);
-      setSelectedCourse(form.courseCode);
-      setShowForm(false);
-      setForm({
-        subject: '',
-        catalog: '',
-        courseCode: '',
-        availability: '',
-        studyTime: '',
-        goals: '',
-        meeting: 'In-person',
-      });
-      setSections([]);
-      loadIncoming();
-    } catch (e) {
-      Alert.alert('Error', e.message);
+      setLoadingOpen(true);
+      const data = await getOpenMatchRequests(selectedCourse, uid);
+      setOpen(data); // Set open requests
+    } finally {
+      setLoadingOpen(false); // Stop loading spinner
     }
   };
+  loadOpen();
+  loadCurrentPartners(selectedCourse); // Load matched partners too
+}, [selectedCourse, uid]);
 
-  const renderReportModal = () => (
-    <Modal
-      visible={showReportModal}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={() => setShowReportModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Report User</Text>
-            <TouchableOpacity 
-              onPress={() => setShowReportModal(false)}
-              style={styles.modalCloseButton}
-            >
-              <Ionicons name="close" size={24} color="#666" />
-            </TouchableOpacity>
-          </View>
-          
-          <Text style={styles.modalSubtitle}>
-            Please select a reason for reporting {reportTarget?.partnerName || 'this user'}:
-          </Text>
-          
-          <ScrollView style={styles.reasonsList}>
-            {reportReasons.map((reason, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.reasonItem,
-                  reportReason === reason && styles.reasonItemSelected
-                ]}
-                onPress={() => setReportReason(reason)}
-              >
-                <Text style={[
-                  styles.reasonText,
-                  reportReason === reason && styles.reasonTextSelected
-                ]}>
-                  {reason}
-                </Text>
-                {reportReason === reason && (
-                  <Ionicons name="checkmark" size={20} color="#007AFF" />
-                )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          
-          {reportReason === 'Other' && (
-            <TextInput
-              style={styles.customReasonInput}
-              placeholder="Please describe the issue..."
-              multiline
-              value={reportReason === 'Other' ? '' : reportReason}
-              onChangeText={(text) => setReportReason(text)}
-            />
-          )}
-          
-          <View style={styles.modalButtons}>
+// Load incoming match requests when UID becomes available
+useEffect(() => {
+  if (uid) {
+    loadIncoming();
+  }
+}, [uid]);
+
+// Handle course match request submission
+const handleSubmit = async () => {
+  if (!form.courseCode) {
+    Alert.alert('Missing Course', 'Please select a course');
+    return;
+  }
+
+  try {
+    // Submit the match request
+    await sendMatchRequest({
+      senderId: uid,
+      course: form.courseCode,
+      studyTime: form.studyTime,
+      meetingPreference: form.meeting,
+      bio: form.goals.slice(0, 100), // Limit bio length
+    });
+
+    Alert.alert('Success', 'Match request submitted.');
+
+    // Refresh course list and UI state
+    await loadMyCourses(uid);
+    setSelectedCourse(form.courseCode);
+    setShowForm(false);
+    setForm({
+      subject: '',
+      catalog: '',
+      courseCode: '',
+      availability: '',
+      studyTime: '',
+      goals: '',
+      meeting: 'In-person',
+    });
+    setSections([]);
+    loadIncoming(); // Refresh incoming matches
+  } catch (e) {
+    Alert.alert('Error', e.message);
+  }
+};
+
+// Modal for reporting a user
+const renderReportModal = () => (
+  <Modal
+    visible={showReportModal}
+    transparent={true}
+    animationType="slide"
+    onRequestClose={() => setShowReportModal(false)}
+  >
+    <View style={styles.modalOverlay}>
+      <View style={styles.modalContainer}>
+        {/* Header */}
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Report User</Text>
+          <TouchableOpacity 
+            onPress={() => setShowReportModal(false)}
+            style={styles.modalCloseButton}
+          >
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
+        </View>
+        
+        {/* Subtitle */}
+        <Text style={styles.modalSubtitle}>
+          Please select a reason for reporting {reportTarget?.partnerName || 'this user'}:
+        </Text>
+
+        {/* Predefined reasons list */}
+        <ScrollView style={styles.reasonsList}>
+          {reportReasons.map((reason, index) => (
             <TouchableOpacity
-              style={styles.modalCancelButton}
-              onPress={() => setShowReportModal(false)}
-            >
-              <Text style={styles.modalCancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
+              key={index}
               style={[
-                styles.modalSubmitButton,
-                (!reportReason.trim() || reportingInProgress) && styles.modalSubmitButtonDisabled
+                styles.reasonItem,
+                reportReason === reason && styles.reasonItemSelected
               ]}
-              onPress={handleReportUser}
-              disabled={!reportReason.trim() || reportingInProgress}
+              onPress={() => setReportReason(reason)}
             >
-              {reportingInProgress ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.modalSubmitButtonText}>Submit Report</Text>
+              <Text style={[
+                styles.reasonText,
+                reportReason === reason && styles.reasonTextSelected
+              ]}>
+                {reason}
+              </Text>
+              {reportReason === reason && (
+                <Ionicons name="checkmark" size={20} color="#007AFF" />
               )}
             </TouchableOpacity>
-          </View>
+          ))}
+        </ScrollView>
+
+        {/* Optional 'Other' reason input */}
+        {reportReason === 'Other' && (
+          <TextInput
+            style={styles.customReasonInput}
+            placeholder="Please describe the issue..."
+            multiline
+            value={reportReason === 'Other' ? '' : reportReason}
+            onChangeText={(text) => setReportReason(text)}
+          />
+        )}
+
+        {/* Modal buttons */}
+        <View style={styles.modalButtons}>
+          <TouchableOpacity
+            style={styles.modalCancelButton}
+            onPress={() => setShowReportModal(false)}
+          >
+            <Text style={styles.modalCancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.modalSubmitButton,
+              (!reportReason.trim() || reportingInProgress) && styles.modalSubmitButtonDisabled
+            ]}
+            onPress={handleReportUser}
+            disabled={!reportReason.trim() || reportingInProgress}
+          >
+            {reportingInProgress ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.modalSubmitButtonText}>Submit Report</Text>
+            )}
+          </TouchableOpacity>
         </View>
       </View>
-    </Modal>
-  );
+    </View>
+  </Modal>
+);
 
-  if (showForm) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={80}
-        >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.headerRow}>
-                <TouchableOpacity onPress={() => setShowForm(false)} style={styles.backButton}>
-                  <Ionicons name="arrow-back" size={24} color="#007AFF" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Add Course</Text>
-                <View style={styles.headerSpacer} />
+// Show course form UI if toggled on
+if (showForm) {
+  return (
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={80}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={{ flex: 1 }}>
+            {/* Form header */}
+            <View style={styles.headerRow}>
+              <TouchableOpacity onPress={() => setShowForm(false)} style={styles.backButton}>
+                <Ionicons name="arrow-back" size={24} color="#007AFF" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Add Course</Text>
+              <View style={styles.headerSpacer} />
+            </View>
+
+            {/* Form fields */}
+            <ScrollView contentContainerStyle={styles.formScroll} showsVerticalScrollIndicator={false}>
+              {/* Subject field */}
+              <View style={styles.formSection}>
+                <Text style={styles.label}>Subject *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="CS"
+                  value={form.subject}
+                  autoCapitalize="characters"
+                  onChangeText={(t) => setForm({ ...form, subject: t.toUpperCase() })}
+                />
               </View>
 
-              <ScrollView contentContainerStyle={styles.formScroll} showsVerticalScrollIndicator={false}>
-                {/* Subject + Catalog */}
-                <View style={styles.formSection}>
-                  <Text style={styles.label}>Subject *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="CS"
-                    value={form.subject}
-                    autoCapitalize="characters"
-                    onChangeText={(t) => setForm({ ...form, subject: t.toUpperCase() })}
-                  />
-                </View>
-
-                <View style={styles.formSection}>
-                  <Text style={styles.label}>Number *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="2100"
-                    keyboardType="numeric"
-                    value={form.catalog}
-                    onChangeText={(t) => setForm({ ...form, catalog: t })}
-                  />
-                </View>
+              {/* Catalog number field */}
+              <View style={styles.formSection}>
+                <Text style={styles.label}>Number *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="2100"
+                  keyboardType="numeric"
+                  value={form.catalog}
+                  onChangeText={(t) => setForm({ ...form, catalog: t })}
+                />
+              </View>
 
                 {/* Search sections */}
                 <TouchableOpacity
