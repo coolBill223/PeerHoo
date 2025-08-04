@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "my-app",
-    "slug": "my-app",
+    "name": "PeerHoo",
+    "slug": "PeerHoo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,14 +16,18 @@
       "supportsTablet": true
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
+      "package": "com.peerhoo.app",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 1,
+      "permissions": []
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3288c590-41f4-432d-b7df-3162a2f8de73"
+      }
     }
   }
 }

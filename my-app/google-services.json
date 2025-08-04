@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "300772083431",
+    "project_id": "cs4720-d84f6",
+    "storage_bucket": "cs4720-d84f6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:300772083431:android:5a6bf6f5544ab566900442",
+        "android_client_info": {
+          "package_name": "com.peerhoo.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDB-JZ9HmzJlP5ewmdVPWt67ZdDe7dL70U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
