@@ -25,7 +25,14 @@ const LoginScreen = ({ navigation }) => {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Missing Information', 'Please enter both your email and password to continue.');
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
       return;
     }
 
@@ -34,22 +41,63 @@ const LoginScreen = ({ navigation }) => {
       await signInWithEmailAndPassword(auth, email, password);
       // Navigation will happen automatically due to auth state change in App.js
     } catch (error) {
-      console.error('Login error:', error);
-      let errorMessage = 'Login failed. Please try again.';
+      // Suppress console errors to prevent them from showing in development
+      // console.error('Login error:', error);
       
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email.';
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = 'Incorrect password.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Please enter a valid email address.';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many failed attempts. Please try again later.';
-      } else if (error.code === 'auth/configuration-not-found') {
-        errorMessage = 'Authentication service is not properly configured. Please contact support.';
+      // User-friendly error messages
+      let title = 'Login Failed';
+      let message = '';
+      
+      switch (error.code) {
+        case 'auth/user-not-found':
+          title = 'Account Not Found';
+          message = 'No account exists with this email address. Please check your email or create a new account.';
+          break;
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+        case 'auth/invalid-login-credentials':
+          title = 'Incorrect Credentials';
+          message = 'The email or password you entered is incorrect. Please try again.';
+          break;
+        case 'auth/invalid-email':
+          title = 'Invalid Email';
+          message = 'Please enter a valid email address.';
+          break;
+        case 'auth/user-disabled':
+          title = 'Account Disabled';
+          message = 'Your account has been disabled. Please contact support for assistance.';
+          break;
+        case 'auth/too-many-requests':
+          title = 'Too Many Attempts';
+          message = 'Too many failed login attempts. Please wait a few minutes before trying again, or reset your password.';
+          break;
+        case 'auth/network-request-failed':
+          title = 'Connection Error';
+          message = 'Unable to connect to the server. Please check your internet connection and try again.';
+          break;
+        case 'auth/configuration-not-found':
+          title = 'Service Unavailable';
+          message = 'The login service is currently unavailable. Please try again later or contact support.';
+          break;
+        case 'auth/weak-password':
+          title = 'Weak Password';
+          message = 'Your password is too weak. Please choose a stronger password.';
+          break;
+        case 'auth/email-already-in-use':
+          title = 'Email In Use';
+          message = 'An account with this email already exists. Try logging in instead.';
+          break;
+        default:
+          title = 'Login Error';
+          message = 'Something went wrong while trying to log you in. Please try again.';
+          break;
       }
       
-      Alert.alert('Login Failed', errorMessage);
+      // Ensure the error is fully handled and doesn't propagate
+      setTimeout(() => {
+        Alert.alert(title, message);
+      }, 100);
+      
     } finally {
       setLoading(false);
     }
@@ -57,24 +105,53 @@ const LoginScreen = ({ navigation }) => {
 
   const handleForgotPassword = () => {
     if (!email) {
-      Alert.alert('Reset Password', 'Please enter your email first.');
+      Alert.alert(
+        'Enter Your Email', 
+        'Please enter your email address first, then tap "Forgot Password?" to receive a reset link.'
+      );
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address to receive the password reset link.');
       return;
     }
 
     Alert.alert(
-      'Reset Password',
-      `Send a password reset link to:\n${email}?`,
+      'Reset Your Password',
+      `We'll send a password reset link to:\n\n${email}\n\nCheck your email and follow the instructions to create a new password.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Send',
+          text: 'Send Reset Link',
           onPress: async () => {
             try {
+              setLoading(true);
               await forgotPassword(email);
-              Alert.alert('Success', 'Reset email sent. Check your inbox.');
+              Alert.alert(
+                'Reset Link Sent!', 
+                'We\'ve sent a password reset link to your email. Please check your inbox (and spam folder) for instructions on how to reset your password.'
+              );
             } catch (error) {
-              console.error('Forgot password error:', error);
-              Alert.alert('Error', 'Failed to send reset email.');
+              // Suppress console errors in production
+              // console.error('Forgot password error:', error);
+              
+              let message = 'Unable to send the password reset email. Please try again.';
+              if (error.code === 'auth/user-not-found') {
+                message = 'No account found with this email address. Please check your email or create a new account.';
+              } else if (error.code === 'auth/invalid-email') {
+                message = 'Please enter a valid email address.';
+              } else if (error.code === 'auth/too-many-requests') {
+                message = 'Too many reset attempts. Please wait a few minutes before trying again.';
+              }
+              
+              setTimeout(() => {
+                Alert.alert('Reset Failed', message);
+              }, 100);
+            } finally {
+              setLoading(false);
             }
           },
         },
