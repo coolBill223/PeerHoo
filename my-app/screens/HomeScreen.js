@@ -107,8 +107,6 @@ const HomeScreen = ({ navigation }) => {
   // Load recent messages for activity timeline
   const loadRecentMessages = async (uid) => {
     try {
-      console.log('🔄 Loading recent messages for activity...');
-      
       // Get all chats where user is a participant
       const chatsQuery = query(
         collection(db, 'chats'), 
@@ -116,7 +114,6 @@ const HomeScreen = ({ navigation }) => {
       );
       
       const chatDocs = await getDocs(chatsQuery);
-      console.log(`📱 Found ${chatDocs.docs.length} chats`);
       
       const messages = [];
       const blockedPartnerIds = new Set(blockedPartners.map(p => p.partnerId || p.id));
@@ -128,7 +125,6 @@ const HomeScreen = ({ navigation }) => {
         
         // Skip blocked partners
         if (blockedPartnerIds.has(otherUserId)) {
-          console.log(`⏭️ Skipping blocked partner: ${otherUserId}`);
           continue;
         }
         
@@ -148,7 +144,6 @@ const HomeScreen = ({ navigation }) => {
             const userInfo = await getUserInfo(otherUserId);
             partnerName = userInfo?.name || `Partner ${otherUserId.slice(0, 6)}`;
           } catch (error) {
-            console.log('Could not get partner name:', error);
             partnerName = `Partner ${otherUserId.slice(0, 6)}`;
           }
         }
@@ -161,14 +156,11 @@ const HomeScreen = ({ navigation }) => {
         );
         
         const messageDocs = await getDocs(messagesQuery);
-        console.log(`💬 Found ${messageDocs.docs.length} messages in chat ${chatDoc.id}`);
         
         // Add each recent message, but only messages from others
         messageDocs.docs.forEach(messageDoc => {
           const messageData = messageDoc.data();
           const isFromOther = messageData.senderId !== uid;
-          
-          console.log(`📝 Message from ${messageData.senderId}, isFromOther: ${isFromOther}, sentAt: ${messageData.sentAt?.toDate()}`);
           
           // Only add messages from other users (not our own messages) and exclude system messages
           if (isFromOther && messageData.sentAt && messageData.senderId !== 'system') {
@@ -194,12 +186,10 @@ const HomeScreen = ({ navigation }) => {
 
       // Keep only the 3 most recent messages from others
       const recentMessagesFromOthers = messages.slice(0, 3);
-      console.log(`✅ Setting ${recentMessagesFromOthers.length} recent messages:`, 
-        recentMessagesFromOthers.map(m => `${m.title} - ${m.timestamp?.toDate()}`));
       
       setRecentMessages(recentMessagesFromOthers);
     } catch (error) {
-      console.error('❌ Error loading recent messages:', error);
+      console.error('Error loading recent messages:', error);
       setRecentMessages([]);
     }
   };
@@ -218,7 +208,7 @@ const HomeScreen = ({ navigation }) => {
         try {
           currentUserInfo = await getUserInfo(partner.partnerId || partner.id);
         } catch (error) {
-          console.log('Could not fetch current user info for partner:', partner.partnerId || partner.id);
+          // Silently continue if user info unavailable
         }
         
         return {
@@ -249,7 +239,6 @@ const HomeScreen = ({ navigation }) => {
       // Load recent messages after partners are loaded
       await loadRecentMessages(uid);
       
-      console.log(`Loaded ${activePartners.length} active partners, ${blocked.length} blocked partners`);
     } catch (error) {
       console.error('Error loading partners data:', error);
       setPartners([]);
@@ -336,7 +325,6 @@ const HomeScreen = ({ navigation }) => {
               authorComputingId: authorInfo?.computingId || note.authorId.slice(0, 8)
             };
           } catch (error) {
-            console.error('Error fetching author info:', error);
             return {
               ...note,
               authorName: 'You',
@@ -387,7 +375,6 @@ const HomeScreen = ({ navigation }) => {
       const totalUnread = unreadCounts.reduce((sum, count) => sum + count, 0);
       
       setTotalUnreadMessages(totalUnread);
-      console.log(`HomeScreen: Total unread messages (excluding blocked): ${totalUnread}`);
     } catch (error) {
       console.error('Error loading unread message count:', error);
       setTotalUnreadMessages(0);
@@ -414,7 +401,6 @@ const HomeScreen = ({ navigation }) => {
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       if (auth.currentUser?.uid) {
-        console.log('🎯 Screen focused - reloading all data');
         loadUserProfile(auth.currentUser.uid);
         loadPartnersData(auth.currentUser.uid);
         loadUserNotes(auth.currentUser.uid);
@@ -491,7 +477,6 @@ const HomeScreen = ({ navigation }) => {
     });
     
     // Add recent messages with real timestamps
-    console.log(`📊 Processing ${recentMessages.length} recent messages for activity`);
     recentMessages.forEach(message => {
       if (message.timestamp) {
         const timeAgo = getTimeAgo(message.timestamp.toDate());
@@ -510,7 +495,6 @@ const HomeScreen = ({ navigation }) => {
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 3);
     
-    console.log(`📈 Final activities:`, sortedActivities.map(a => `${a.type}: ${a.title} - ${a.time}`));
     return sortedActivities;
   };
 
