@@ -52,6 +52,11 @@ Here's some detailing of each of the larger features:
 - **Firebase Realtime Database** 
 - **Firebase Storage** 
 
+### External Course API
+All course metadata is pulled live from the public **UVA SIS REST API** – see the official docs  
+<https://s23.cs3240.org/sis-api.html>.  
+We build dynamic query URLs (e.g. `...IScript_ClassSearch?...`) to fetch JSON about
+departments, courses and sections, then cache the results in Firestore for fast lookup in-app. :contentReference[oaicite:0]{index=0}
 
 ## Development Timeline
 
