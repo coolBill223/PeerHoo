@@ -64,21 +64,6 @@ This entire project was completed over a 25-day development cycle. In the beginn
 
 However, due to the enthusiastic approach of all of the team members, we were able to implement features much faster than expected and were done with the working version of our app as early as the beginning of Week 3. We used the extra time to beta test our app as well as seek feedback from our Professor Daniel Graham. We used the final week for the creation of our demo video and final submission of the project. 
 
-## Repository Structure
-
-```
-CS4720-Project/
-├── src/
-│   ├── components/     # Reusable UI components
-│   ├── screens/        # App screens/pages
-│   ├── navigation/     # Navigation configuration
-│   ├── services/       # Firebase and API services
-│   └── utils/          # Helper functions
-├── assets/             # Images and static files
-├── docs/              # Documentation
-└── README.md
-```
-
 ## Demo Video
 
 Here is a demo video that walks through the app: 
