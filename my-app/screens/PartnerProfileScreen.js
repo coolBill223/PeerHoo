@@ -1,3 +1,6 @@
+// The purpose of this screen is to display detailed information about a study partner,
+// including their profile picture, name, computing ID, courses, study preferences,
+// and options to block or report them. It also allows users to start a chat with the partner.
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -39,11 +42,13 @@ const PartnerProfileScreen = ({ route, navigation }) => {
     'Other'
   ];
 
+  // Load full partner info and check block status when component mounts
   useEffect(() => {
     loadFullPartnerInfo();
     checkBlockStatus();
   }, [partner]);
 
+  // Load full partner information including profile picture and other details
   const loadFullPartnerInfo = async () => {
     try {
       setLoading(true);
@@ -77,6 +82,7 @@ const PartnerProfileScreen = ({ route, navigation }) => {
     }
   };
 
+  // Check if the current user has blocked this partner
   const checkBlockStatus = async () => {
     try {
       const currentUser = auth.currentUser;
@@ -89,6 +95,7 @@ const PartnerProfileScreen = ({ route, navigation }) => {
     }
   };
 
+  // Handle user blocking the selected partner
   const handleBlockPartner = async () => {
     Alert.alert(
       'Block Partner',
@@ -103,8 +110,8 @@ const PartnerProfileScreen = ({ route, navigation }) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              const currentUser = auth.currentUser;
-              if (currentUser && partner.id) {
+              const currentUser = auth.currentUser; // Get the current user
+              if (currentUser && partner.id) { // Check if partner has an ID
                 await blockPartner(partner.id, currentUser.uid);
                 setIsBlocked(true);
                 Alert.alert(
@@ -127,6 +134,7 @@ const PartnerProfileScreen = ({ route, navigation }) => {
     );
   };
 
+  // Handle user unblocking the selected partner
   const handleUnblockPartner = async () => {
     Alert.alert(
       'Unblock Partner',
@@ -165,6 +173,7 @@ const PartnerProfileScreen = ({ route, navigation }) => {
     );
   };
 
+  // Handle reporting the partner and asks for reason
   const handleReportPartner = async () => {
     if (!reportReason.trim()) {
       Alert.alert('Error', 'Please select or enter a reason for reporting.');
@@ -198,16 +207,19 @@ const PartnerProfileScreen = ({ route, navigation }) => {
     }
   };
 
+  // Handle image loading and error states
   const handleImageLoad = () => {
     setImageLoading(false);
     setImageError(false);
   };
 
+  // Handle image loading error
   const handleImageError = () => {
     setImageLoading(false);
     setImageError(true);
   };
 
+  // Render the profile image or avatar icon based on availability
   const renderProfileImage = () => {
     const photoURL = fullPartnerInfo?.photoURL || partnerData?.photoURL;
     const selectedAvatar = fullPartnerInfo?.selectedAvatar || partnerData?.selectedAvatar || 'person-circle';
@@ -238,6 +250,7 @@ const PartnerProfileScreen = ({ route, navigation }) => {
     }
   };
 
+  // Render the report modal for reporting the partner
   const renderReportModal = () => (
     <Modal
       visible={showReportModal}
@@ -333,7 +346,7 @@ const PartnerProfileScreen = ({ route, navigation }) => {
     );
   }
 
-  return (
+  return ( // Main component rendering
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}

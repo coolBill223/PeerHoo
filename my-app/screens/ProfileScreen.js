@@ -1,3 +1,6 @@
+// The purpose of this code is to create a user profile screen in a React Native application that allows users to 
+//view and edit their profile information, including their name, bio, courses, study preferences, and profile picture. 
+//It also includes functionality to upload a new profile picture, select an avatar icon, and display user statistics such as active study partners and notes shared.
 import React, { useState, useEffect } from 'react';
 import {
   View,

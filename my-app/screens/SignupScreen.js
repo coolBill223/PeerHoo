@@ -1,3 +1,4 @@
+// The purpose of this code is to create a user registration screen
 import React, { useState } from 'react';
 import {
   View,
@@ -17,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { registerUser } from '../backend/authService';
 
 const SignupScreen = ({ navigation }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState({ // Initializing form data state
     name: '',
     email: '',
     password: '',
@@ -35,6 +36,7 @@ const SignupScreen = ({ navigation }) => {
     }));
   };
 
+  // puts together the user input and handles the signup process
   const handleSignup = async () => {
     const { name, email, password, confirmPassword, computingId } = formData;
 
@@ -79,6 +81,7 @@ const SignupScreen = ({ navigation }) => {
       console.error('Signup error:', error);
       let errorMessage = 'Failed to create account. Please try again.';
       
+      // Handle specific error messages
       if (error.message.includes('Computing ID')) {
         errorMessage = error.message;
       } else if (error.code === 'auth/email-already-in-use') {
@@ -97,6 +100,7 @@ const SignupScreen = ({ navigation }) => {
     }
   };
 
+  // Render the signup screen with form inputs and buttons
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView

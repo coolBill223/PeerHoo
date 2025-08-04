@@ -1,3 +1,4 @@
+// The purpose of this code is to create a welcome screen
 import React from 'react';
 import {
   View,
@@ -10,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
+// Importing dimensions to make the layout responsive
 const { width, height } = Dimensions.get('window');
 
 const WelcomeScreen = ({ navigation }) => {

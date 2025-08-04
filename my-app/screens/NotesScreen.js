@@ -1,3 +1,5 @@
+//The purpose of this code is to implement a Notes Screen in a React Native application that allows users to 
+//browse, upload, and manage notes for different courses.
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -76,10 +78,12 @@ const NotesScreen = () => {
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editingCommentText, setEditingCommentText] = useState('');
 
+  // Upload state
   useEffect(() => {
     loadUserCourses();
   }, []);
 
+  // Load notes for the selected course when it changes
   useEffect(() => {
     if (selectedCourse && !searchMode) {
       loadNotesForCourse(selectedCourse);
@@ -97,7 +101,7 @@ const NotesScreen = () => {
   const loadComments = async () => {
     if (!selectedNote) return;
     
-    setLoadingComments(true);
+    setLoadingComments(true); // Reset comments state
     try {
       const noteComments = await getCommentsForNote(selectedNote.id);
       
@@ -131,6 +135,7 @@ const NotesScreen = () => {
     }
   };
 
+  // Add comment to note
   const handleAddComment = async () => {
     if (!newComment.trim() || !selectedNote || !auth.currentUser) return;
 
@@ -148,6 +153,7 @@ const NotesScreen = () => {
     }
   };
 
+  // Delete comment from note
   const handleDeleteComment = async (commentId) => {
     if (!auth.currentUser) return;
 
@@ -178,7 +184,7 @@ const NotesScreen = () => {
     setEditingCommentId(comment.id);
     setEditingCommentText(comment.content);
   };
-
+  
   const handleUpdateComment = async () => {
     if (!editingCommentText.trim() || !editingCommentId || !auth.currentUser) return;
 
@@ -225,6 +231,7 @@ const NotesScreen = () => {
       return;
     }
 
+    // Validate rating process
     setIsRating(true);
     try {
       const newAvgRating = await rateNote(selectedNote.id, rating, auth.currentUser.uid);
@@ -255,7 +262,7 @@ const NotesScreen = () => {
   const handleSearch = async (query) => {
     setSearchQuery(query);
     
-    if (!query.trim()) {
+    if (!query.trim()) { // Clear search if query is empty
       setSearchMode(false);
       setSearchResults([]);
       setCourseSearchResults([]);
@@ -267,6 +274,7 @@ const NotesScreen = () => {
     setIsSearching(true);
     setSelectedSearchCourse(null);
     
+    // Search for courses matching the query
     try {
       const courses = await getAvailableCourses(query);
       setCourseSearchResults(courses);
@@ -287,7 +295,7 @@ const NotesScreen = () => {
     
     try {
       const courseNotes = await searchNotesByCourse(course);
-      
+      // Fetch author info for each note
       const notesWithAuthors = await Promise.all(
         courseNotes.map(async (note) => {
           try {
@@ -308,6 +316,7 @@ const NotesScreen = () => {
         })
       );
       
+      // Set search results with author info
       setSearchResults(notesWithAuthors);
       setCourseSearchResults([]);
     } catch (error) {
@@ -373,7 +382,7 @@ const NotesScreen = () => {
       return;
     }
 
-    setLoading(true);
+    setLoading(true); // Reset loading state
     try {
       const user = auth.currentUser;
       if (!user) {
@@ -406,6 +415,7 @@ const NotesScreen = () => {
     const user = auth.currentUser;
     if (!user) return;
 
+    //ask user for confirmation before deleting
     Alert.alert(
       'Delete Note',
       'Are you sure you want to delete this note?',
@@ -454,6 +464,7 @@ const NotesScreen = () => {
     return downloadURL;
   };
 
+  // Get MIME type based on file extension
   const getMimeType = (uri) => {
     if (uri.endsWith('.pdf')) return 'application/pdf';
     if (uri.endsWith('.jpg') || uri.endsWith('.jpeg')) return 'image/jpeg';
@@ -510,6 +521,7 @@ const NotesScreen = () => {
         })
       );
       
+      // Update notes state with fetched notes
       setNotes(prev => ({
         ...prev,
         [course]: notesWithAuthors
@@ -539,6 +551,7 @@ const NotesScreen = () => {
         }
       }
       
+      // Add author info to note detail
       const noteWithAuthor = {
         ...noteDetail,
         authorName: noteDetail.authorName || authorInfo?.name || `Student ${noteDetail.authorId.slice(0, 8)}`,
@@ -579,6 +592,7 @@ const NotesScreen = () => {
           },
         },
         {
+          // Launch image library
           text: "Photo Library",
           onPress: async () => {
             const result = await ImagePicker.launchImageLibraryAsync({
@@ -592,6 +606,7 @@ const NotesScreen = () => {
           },
         },
         {
+          // Launch document picker
           text: "Browse Files",
           onPress: async () => {
             const result = await DocumentPicker.getDocumentAsync({
@@ -628,7 +643,7 @@ const NotesScreen = () => {
 
     setLoading(true);
     try {
-      const user = auth.currentUser;
+      const user = auth.currentUser; // Check if user is logged in
       if (!user) {
         Alert.alert('Error', 'You must be logged in to upload notes');
         return;
@@ -648,8 +663,8 @@ const NotesScreen = () => {
       setUploadCourse('');
       setSelectedFile(null);
       
-      await loadNotesForCourse(uploadCourse.trim());
-      await loadUserCourses();
+      await loadNotesForCourse(uploadCourse.trim()); // Reload notes for the uploaded course
+      await loadUserCourses(); // Reload user courses
       
       setView('browse');
     } catch (error) {
