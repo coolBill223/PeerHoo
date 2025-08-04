@@ -82,3 +82,5 @@ This follows a service-oriented architecture. Consider the my-app directory as t
 Here is a demo video that walks through the app: 
 
 ## License
+
+This project is licensed under the MIT License. Please view the LICENSE file for the full description.
