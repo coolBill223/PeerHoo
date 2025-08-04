@@ -110,41 +110,50 @@ function MainTabNavigator() {
       where('participants', 'array-contains', auth.currentUser.uid)
     );
     
-    const unsubscribe = onSnapshot(chatsQuery, async (snapshot) => {
-      try {
-        if (snapshot.empty) {
+    const unsubscribe = onSnapshot(
+      chatsQuery,
+      async (snapshot) => {
+        try {
+          if (snapshot.empty) {
+            setTotalUnreadMessages(0);
+            return;
+          }
+
+          const blockedPartnerIds = await calculateBlockedPartnerIds();
+          const unreadPromises = snapshot.docs.map(async (chatDoc) => {
+            const chatData   = chatDoc.data();
+            const otherUid   = chatData.participants.find(
+              id => id !== auth.currentUser.uid
+            );
+            if (blockedPartnerIds.has(otherUid)) return 0;
+            return await getUnreadCount(chatDoc.id, auth.currentUser.uid);
+         });
+          const unreadCounts = await Promise.all(unreadPromises);
+          const totalUnread  = unreadCounts.reduce((s, c) => s + c, 0);
+
+          console.log(
+            'Navigation: Total unread messages (excluding blocked):',
+            totalUnread
+          );
+          setTotalUnreadMessages(totalUnread);
+        } catch (error) {
+          console.error(
+            'Error calculating unread messages for navigation:',
+            error
+          );
           setTotalUnreadMessages(0);
+        }
+      },
+      (err) => {
+        if (err.code === 'permission-denied') {
+          console.log('onSnapshot cancelled (user signed out)');
           return;
         }
-
-        // Get blocked partner IDs
-        const blockedPartnerIds = await calculateBlockedPartnerIds();
-
-        // Get unread count for each chat, excluding blocked partners
-        const unreadPromises = snapshot.docs.map(async (chatDoc) => {
-          const chatData = chatDoc.data();
-          const otherUserId = chatData.participants.find(id => id !== auth.currentUser.uid);
-          
-          // If the other user is blocked, don't count unread messages
-          if (blockedPartnerIds.has(otherUserId)) {
-            return 0;
-          }
-          
-          return await getUnreadCount(chatDoc.id, auth.currentUser.uid);
-        });
-        
-        const unreadCounts = await Promise.all(unreadPromises);
-        const totalUnread = unreadCounts.reduce((sum, count) => sum + count, 0);
-        
-        console.log('Navigation: Total unread messages (excluding blocked):', totalUnread);
-        setTotalUnreadMessages(totalUnread);
-      } catch (error) {
-        console.error('Error calculating unread messages for navigation:', error);
-        setTotalUnreadMessages(0);
+        if (err.code === 'permission-denied') return;
+       console.error('❌ chatslist snapshot error', err);
       }
-    });
-
-    return () => unsubscribe();
+    );
+   return () => unsubscribe();
   }, [auth.currentUser?.uid, refreshKey]);
 
   return (

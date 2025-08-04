@@ -82,7 +82,12 @@ const InboxScreen = () => {
       // Reload data when chats change
       console.log('InboxScreen: Chat changes detected - reloading data...');
       loadData();
-    });
+    },
+    (err) => {
+      if (err.code === 'permission-denied') return;
+      console.error('❌ chatslist snapshot error', err);
+    }
+  );
 
     return () => unsubscribe();
   }, []);

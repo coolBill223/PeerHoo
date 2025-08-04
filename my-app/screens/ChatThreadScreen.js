@@ -108,7 +108,12 @@ const ChatThreadScreen = ({ route, navigation }) => {
       });
       setMessages(list);
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-    });
+    },
+    (err) => {
+      if (err.code === 'permission-denied') return;
+       console.error('❌ messages snapshot, chatId =', thread.id, err);
+    }
+  );
 
     return () => unsubscribe();
   }, [thread.id]);
